@@ -1,20 +1,41 @@
-/* MeasureMe game logic. Questions live in questions.js (global ROUNDS). */
+/* MeasureMe: one daily set of ten measurements. Questions live in questions.js (global ROUNDS). */
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  getJSON(k) { try { return JSON.parse(this.get(k)); } catch (e) { return null; } },
+  setJSON(k, v) { this.set(k, JSON.stringify(v)); }
 };
 const RM = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const PHONE = window.matchMedia("(max-width:640px)");
 const SKIN = { temp: "thermo", height: "rod", length: "tape", other: "cyl" };
 const MAX = ROUNDS.reduce((s, R) => s + R.pts, 0);
 const OFF = ROUNDS.map((R, r) => ROUNDS.slice(0, r).reduce((s, x) => s + x.count, 0));
+const TOTAL = ROUNDS.reduce((s, R) => s + R.count, 0);
+const TIME = 30;                      // seconds per question
+const LAUNCH = "2026-09-10";          // puzzle #1
+const PRACTICE = /[?&]practice\b/.test(location.search);
 
-const S = { r: 0, i: 0, picks: [], guess: 0, phase: "guess", results: [], score: 0 };
+/* ---------- units: questions are written in one unit; the toggle converts for display ---------- */
+const SYS = { ft: "imp", yd: "imp", mi: "imp", in: "imp", lb: "imp", oz: "imp", mph: "imp", "°F": "imp",
+              m: "met", cm: "met", km: "met", kg: "met", g: "met", "km/h": "met", "°C": "met" };
+const CONV = { // unit -> [other system's unit, factor, offset]
+  ft: ["m", 0.3048, 0], yd: ["m", 0.9144, 0], mi: ["km", 1.609344, 0], in: ["cm", 2.54, 0], lb: ["kg", 0.45359237, 0],
+  mph: ["km/h", 1.609344, 0], "°F": ["°C", 5 / 9, -160 / 9], m: ["ft", 1 / 0.3048, 0], cm: ["in", 1 / 2.54, 0],
+  km: ["mi", 1 / 1.609344, 0], kg: ["lb", 1 / 0.45359237, 0], g: ["oz", 1 / 28.349523125, 0], "km/h": ["mph", 1 / 1.609344, 0], "°C": ["°F", 9 / 5, 32]
+};
+function view(it) {
+  if (!SYS[it.u] || SYS[it.u] === S.sys) return Object.assign({}, it, { conv: false, c: v => v, inv: v => v });
+  const [u, f, b] = CONV[it.u], c = v => v * f + b;
+  return Object.assign({}, it, { u, min: c(it.min), max: c(it.max), a: c(it.a), conv: true, c, inv: v => (v - b) / f });
+}
+
+const S = { sys: store.get("measureme.units") || (/^en-(US|LR|MM)/i.test(navigator.language) ? "imp" : "met"),
+            r: 0, i: 0, picks: [], view: null, guess: 0, phase: "start", results: [], score: 0, n: 0, date: "" };
 const el = {};
-["gauge", "rail", "ticks", "ghost", "handleTxt", "guessOut", "actualOut", "guessPane", "revealPane", "game", "inter", "end"].forEach(id => el[id] = $(id));
-const cur = () => S.picks[S.r][S.i];
+["gauge", "rail", "ticks", "ghost", "handleTxt", "guessOut", "actualOut", "guessPane", "revealPane", "game", "start", "inter", "end", "timer"].forEach(id => el[id] = $(id));
+const cur = () => S.view;
 const idx = () => OFF[S.r] + S.i;
 const roundRes = r => S.results.slice(OFF[r], OFF[r] + ROUNDS[r].count);
 
@@ -27,7 +48,6 @@ const fromT = (t, it = cur()) => it.log
   ? Math.pow(10, L10(it.min) + t * (L10(it.max) - L10(it.min)))
   : it.min + t * (it.max - it.min);
 function nice(x) { const e = Math.pow(10, Math.floor(L10(x))), f = x / e; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * e; }
-// Snap step: 1/10 of a tick on linear gauges; 3 significant figures on log gauges.
 function stepAt(v, it = cur()) {
   if (it.log) return Math.pow(10, Math.floor(L10(Math.max(Math.abs(v), it.min))) - 2);
   return nice((it.max - it.min) / 7) / 10;
@@ -40,9 +60,11 @@ function num(v, dec) {
   const s = Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: dec, minimumFractionDigits: 0 });
   return (v < 0 && !/^0(\.0+)?$/.test(s) ? "−" : "") + s;
 }
-const answerDec = a => { const s = String(a); return s.includes(".") ? s.split(".")[1].length : 0; };
+// Exact answers keep their written precision; converted ones get 3 significant figures.
+const aDec = it => it.conv ? (Math.abs(it.a) >= 100 ? 0 : Math.abs(it.a) >= 10 ? 1 : 2)
+                           : (String(it.a).split(".")[1] || "").length;
 const fmtV = (v, it = cur()) => num(v, decimalsFor(stepAt(v, it)));
-const fmtA = (it = cur()) => num(it.a, answerDec(it.a));
+const fmtA = (it = cur()) => num(it.a, aDec(it));
 const withUnit = (s, it = cur()) => `${s}<small>${it.u}</small>`;
 const plain = (s, it = cur()) => `${s}${it.u.startsWith("°") ? "" : " "}${it.u}`;
 function compact(v) {
@@ -52,7 +74,7 @@ function compact(v) {
   else if (a >= 1000) s = +(a / 1000).toFixed(1) + "k";
   else if (a >= 10 || a === 0) s = String(Math.round(a));
   else if (a >= 1) s = String(+a.toFixed(1));
-  else s = String(+a.toPrecision(1));
+  else s = String(+a.toPrecision(2));
   return (v < 0 && s !== "0" ? "−" : "") + s;
 }
 
@@ -139,15 +161,66 @@ function holdable(btn, dir) {
 holdable($("minus"), -1);
 holdable($("plus"), 1);
 
-/* ---------- flow ---------- */
-function shuffle(a) { for (let k = a.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; } return a; }
-// Prefer a different kind of measurement for each question in a round.
+/* ---------- daily puzzle ---------- */
+const pad = n => String(n).padStart(2, "0");
+const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const dayNum = ds => Math.round((Date.parse(ds + "T00:00:00Z") - Date.parse(LAUNCH + "T00:00:00Z")) / 864e5) + 1;
+function rng(seed) {
+  return () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function shuffle(a, rand = Math.random) { for (let k = a.length - 1; k > 0; k--) { const j = Math.floor(rand() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; } return a; }
+// Each round's pool is shuffled with a fixed seed and walked day by day, so questions
+// don't repeat until the pool runs out; then it reshuffles for the next cycle.
+function dailyPicks(n) {
+  return ROUNDS.map((R, r) => Array.from({ length: R.count }, (_, i) => {
+    const k = (n - 1) * R.count + i, cycle = Math.floor(k / R.items.length);
+    return shuffle(R.items.slice(), rng(1009 * (r + 1) + 7919 * cycle))[k % R.items.length];
+  }));
+}
+// Practice games: random, with a different kind of measurement per question where possible.
 function pickRound(items, count) {
   const pool = shuffle(items.slice()), out = [], seen = new Set();
   pool.forEach(it => { if (out.length < count && !seen.has(it.m)) { out.push(it); seen.add(it.m); } });
   pool.forEach(it => { if (out.length < count && !out.includes(it)) out.push(it); });
   return out;
 }
+function save() {
+  if (PRACTICE) return;
+  store.setJSON("measureme.daily", { date: S.date, n: S.n,
+    res: S.results.filter(Boolean).map(x => ({ q: x.it.q, g: x.gBase, p: x.p, dir: x.dir, to: x.timedOut })) });
+}
+function restore() {
+  const s = store.getJSON("measureme.daily");
+  if (!s || s.date !== S.date || !Array.isArray(s.res)) return 0;
+  const flat = S.picks.flat();
+  s.res.forEach((x, k) => { if (flat[k] && flat[k].q === x.q) S.results[k] = { it: flat[k], gBase: x.g, p: x.p, dir: x.dir, timedOut: x.to }; });
+  S.score = S.results.reduce((a, x) => a + (x ? x.p : 0), 0);
+  return S.results.filter(Boolean).length;
+}
+function recordStats(total) {
+  const st = store.getJSON("measureme.stats") || { streak: 0, last: "", played: 0, best: 0 };
+  if (st.last !== S.date) {
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    st.streak = st.last === localDate(y) ? st.streak + 1 : 1;
+    st.last = S.date; st.played += 1; st.best = Math.max(st.best || 0, total);
+    store.setJSON("measureme.stats", st);
+  }
+  return st;
+}
+
+/* ---------- timer ---------- */
+let timerId = 0, deadline = 0;
+function stopTimer() { clearInterval(timerId); timerId = 0; }
+function startTimer() { stopTimer(); deadline = Date.now() + TIME * 1000; tick(); timerId = setInterval(tick, 100); }
+function tick() {
+  const rem = Math.max(0, deadline - Date.now());
+  $("timerFill").style.width = (rem / (TIME * 1000) * 100).toFixed(2) + "%";
+  $("timerTxt").textContent = "0:" + pad(Math.ceil(rem / 1000));
+  el.timer.classList.toggle("low", rem <= 10000);
+  if (rem <= 0 && S.phase === "guess") { stopTimer(); lock(true); }
+}
+
+/* ---------- flow ---------- */
 const ptsColor = p => `color-mix(in srgb, var(--accent) ${Math.round(15 + p * 0.85)}%, #8A98A5)`;
 function buildProgress() {
   $("prog").innerHTML = ROUNDS.map((R, r) => `<div class="grp">${Array.from({ length: R.count }, (_, i) => `<span class="cell" data-k="${OFF[r] + i}"></span>`).join("")}</div>`).join("");
@@ -160,31 +233,50 @@ function updateHeader() {
   });
   $("score").textContent = Math.round(S.score).toLocaleString("en-US");
 }
-function show(section) { ["game", "inter", "end"].forEach(s => el[s].hidden = s !== section); }
-
-function newGame(first) {
-  S.picks = ROUNDS.map(R => pickRound(R.items, R.count));
-  S.r = 0; S.i = 0; S.results = []; S.score = 0;
-  showItem(first);
+function show(section) { ["game", "start", "inter", "end"].forEach(s => el[s].hidden = s !== section); }
+function goTo(k) {
+  let r = 0; while (r < ROUNDS.length - 1 && k >= OFF[r + 1]) r++;
+  S.r = r; S.i = k - OFF[r];
+  showItem();
 }
-function showItem(first) {
-  const it = cur(), R = ROUNDS[S.r];
+function showStart(done) {
+  S.phase = "start";
+  const when = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  el.start.innerHTML = `<div class="screen">
+    <p class="label">${PRACTICE ? "Practice · not saved" : "Daily puzzle · " + when}</p>
+    <h2 class="round-big">${PRACTICE ? "Practice" : "#" + S.n}</h2>
+    <p class="blurb">Ten measurements, from everyday to deeply obscure. Slide the gauge to guess. You get <b>${TIME} seconds</b> per question${PRACTICE ? "." : ", and one try a day."}</p>
+    <ol class="ladder">${ROUNDS.map((R, r) => `<li class="${done >= OFF[r] + R.count ? "done" : ""}"><b>${R.name}</b><span>${R.count} questions · ${R.pts} pts</span></li>`).join("")}</ol>
+    <div class="actions"><button class="btn primary" type="button" id="begin">${done ? `Resume at question ${done + 1}` : "Start"}</button></div>
+  </div>`;
+  show("start"); updateHeader();
+  $("begin").addEventListener("click", () => goTo(done));
+}
+function paintChrome() {
+  const it = cur();
+  $("plateUnit").textContent = it.u;
+  $("plateKind").textContent = it.m;
+  $("plateRange").textContent = `Gauge ${compact(it.min)}–${plain(compact(it.max))}${it.log ? " · log scale" : ""}`;
+  el.gauge.setAttribute("aria-valuemin", +it.min.toFixed(4));
+  el.gauge.setAttribute("aria-valuemax", +it.max.toFixed(4));
+  renderTicks(it);
+}
+function showItem() {
+  const it = S.picks[S.r][S.i], R = ROUNDS[S.r];
+  S.view = view(it);
   S.phase = "guess"; show("game");
   el.guessPane.hidden = false; el.revealPane.hidden = true; el.ghost.hidden = true;
   el.gauge.className = "gauge skin-" + SKIN[it.k];
   $("eyeRound").textContent = `Round ${S.r + 1} · ${R.name} · ${R.pts} pts`;
-  $("eyeItem").textContent = `Item ${S.i + 1} of ${R.count}`;
+  $("eyeItem").textContent = `Question ${idx() + 1} of ${TOTAL}`;
   $("itemName").textContent = it.q;
   $("itemHint").textContent = it.h;
-  $("plateUnit").textContent = it.u;
-  $("plateKind").textContent = it.m;
-  $("plateRange").textContent = `Gauge ${compact(it.min)}–${compact(it.max)} ${it.u}${it.log ? " · log scale" : ""}`;
-  el.gauge.setAttribute("aria-valuemin", it.min);
-  el.gauge.setAttribute("aria-valuemax", it.max);
-  renderTicks(it);
-  setGuess(it.min); // gauges start at rest, so an untouched guess scores near zero
+  paintChrome();
+  setGuess(S.view.min); // gauges start at rest, so an untouched guess scores near zero
   updateHeader();
-  if (!first) { window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" }); el.gauge.focus({ preventScroll: true }); }
+  window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
+  el.gauge.focus({ preventScroll: true });
+  startTimer();
 }
 
 // Scored by distance along the gauge, so every unit and scale is judged the same way.
@@ -201,11 +293,14 @@ function verdictFor(p, dir) {
   if (p >= 15) return `Way ${dir}.`;
   return pick(["Off the charts. Not even close.", "The gauge is disappointed."]);
 }
-function lock() {
+function lock(timedOut) {
   if (S.phase !== "guess") return;
+  stopTimer();
   const it = cur(), g = S.guess, p = points(g, it), dir = g > it.a ? "high" : "low";
-  S.results[idx()] = { it, g, p, gained: p, dir, v: verdictFor(p, dir) };
+  S.results[idx()] = { it: S.picks[S.r][S.i], gBase: it.inv(g), p, dir, timedOut: !!timedOut,
+                       v: (timedOut ? "Time’s up. " : "") + verdictFor(p, dir) };
   S.score += p;
+  save();
   S.phase = "reveal";
   el.gauge.classList.add("locked");
   el.gauge.style.setProperty("--tg", clamp(toT(g), 0, 1).toFixed(5));
@@ -213,19 +308,20 @@ function lock() {
   el.guessPane.hidden = true; el.revealPane.hidden = false;
   renderReveal();
   const R = ROUNDS[S.r];
-  $("next").textContent = S.i < R.count - 1 ? "Next item" : S.r < ROUNDS.length - 1 ? `On to Round ${S.r + 2}` : "See my final score";
+  $("next").textContent = S.i < R.count - 1 ? "Next question" : S.r < ROUNDS.length - 1 ? `On to Round ${S.r + 2}` : "See my final score";
   $("next").focus({ preventScroll: true });
   updateHeader();
   animate(g, it.a);
   if (PHONE.matches) document.querySelector(".item").scrollIntoView({ block: "start", behavior: RM ? "auto" : "smooth" });
 }
 function renderReveal() {
-  const res = S.results[idx()], it = res.it, d = Math.abs(res.g - it.a);
+  const res = S.results[idx()], it = cur(), g = it.c(res.gBase), d = Math.abs(g - it.a);
   $("ptsOut").textContent = "+" + res.p;
   $("ptsMath").textContent = "out of 100";
-  $("verdict").textContent = res.v;
-  $("delta").textContent = d === 0 ? `You said ${plain(fmtV(res.g))}. Exactly right.` : `You said ${plain(fmtV(res.g))}: ${plain(num(d, Math.max(decimalsFor(stepAt(res.g)), answerDec(it.a))))} too ${res.dir}.`;
-  $("fact").textContent = it.x;
+  $("verdict").textContent = res.v || verdictFor(res.p, res.dir);
+  $("delta").textContent = d < 1e-9 ? `You said ${plain(fmtV(g))}. Exactly right.`
+    : `You said ${plain(fmtV(g))}: ${plain(num(d, Math.max(decimalsFor(stepAt(g)), aDec(it))))} too ${res.dir}.`;
+  $("fact").textContent = res.it.x;
 }
 let animId = 0;
 function animate(from, to) {
@@ -247,7 +343,7 @@ function next() {
   else if (S.r < ROUNDS.length - 1) showInter();
   else showEnd();
 }
-const roundScore = r => roundRes(r).reduce((s, x) => s + (x ? x.gained : 0), 0);
+const roundScore = r => roundRes(r).reduce((s, x) => s + (x ? x.p : 0), 0);
 
 function showInter() {
   S.phase = "inter";
@@ -255,8 +351,8 @@ function showInter() {
   el.inter.innerHTML = `<div class="screen">
     <p class="label">Round ${S.r + 1} done · ${roundScore(S.r)} points banked</p>
     <h2 class="round-big">Round ${nr + 1}</h2>
-    <p class="round-name">${R.name} <span class="chip">${R.count} items · ${R.pts} pts</span></p>
-    <p class="blurb">${R.blurb}</p>
+    <p class="round-name">${R.name} <span class="chip">${R.count} questions · ${R.pts} pts</span></p>
+    <p class="blurb">${R.blurb} The clock starts when you tap Start.</p>
     <ol class="ladder">${ROUNDS.map((x, k) => `<li class="${k < nr ? "done" : k === nr ? "next" : "later"}"><b>${x.name}</b><span>${k < nr ? roundScore(k) + " of " + x.pts + " pts" : k === nr ? "Up next · " + x.pts + " pts" : x.pts + " pts"}</span></li>`).join("")}</ol>
     <div class="actions"><button class="btn primary" type="button" id="go">Start Round ${nr + 1}</button></div>
   </div>`;
@@ -272,27 +368,45 @@ function rating(s) {
   if (s >= 600) return ["Steady Hand", "Solid instincts with the odd wild guess."];
   if (s >= 450) return ["Rough Estimate", "You know a hoop from a skyscraper. Mostly."];
   if (s >= 250) return ["Eyeballer", "Somewhere between a guess and a vibe."];
-  return ["Uncalibrated", "The gauge needs a word with you. Run it back?"];
+  return ["Uncalibrated", "The gauge needs a word with you."];
 }
 const square = p => p >= 85 ? "🟦" : p >= 60 ? "🟩" : p >= 30 ? "🟨" : "⬜";
-let isNewBest = false;
-function showEnd() {
-  S.phase = "end";
-  const total = Math.round(S.score), prev = parseInt(store.get("measureme.best") || "0", 10) || 0;
-  isNewBest = total > prev;
-  if (isNewBest) store.set("measureme.best", String(total));
-  const [title, sub] = rating(total);
+let countdownId = 0;
+function countdown() {
+  const now = new Date(), mid = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const ms = mid - now, box = $("countdown");
+  if (!box) return clearInterval(countdownId);
+  if (ms <= 0 || localDate() !== S.date) { location.reload(); return; }
+  const s = Math.floor(ms / 1000);
+  box.textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+}
+function showEnd(rerender) {
+  S.phase = "end"; stopTimer();
+  const total = Math.round(S.score), [title, sub] = rating(total);
+  let statsHtml;
+  if (PRACTICE) {
+    statsHtml = `<p class="best">Practice games aren’t saved. <a href="./">Back to today’s puzzle</a></p>`;
+  } else {
+    const st = rerender ? (store.getJSON("measureme.stats") || {}) : recordStats(total);
+    statsHtml = `<div class="stats">
+      <div><span class="label">Next puzzle in</span><b class="countdown" id="countdown">--:--:--</b></div>
+      <div><span class="label">Streak</span><b>${st.streak || 1} day${st.streak === 1 ? "" : "s"}</b></div>
+      <div><span class="label">Played</span><b>${st.played || 1}</b></div>
+      <div><span class="label">Best</span><b>${(st.best || total).toLocaleString("en-US")}</b></div>
+    </div>`;
+  }
   const rows = ROUNDS.map((R, r) => `<div class="row sub label">Round ${r + 1} · ${R.name} · ${roundScore(r)} of ${R.pts} pts</div>` +
-    roundRes(r).map(x => `<div class="row"><span class="n">${x.it.q}</span><span class="v">${plain(fmtV(x.g, x.it), x.it)}</span><span class="v">${plain(fmtA(x.it), x.it)}</span><span class="p" style="background:${ptsColor(x.p)}">+${x.p}</span></div>`).join("")).join("");
+    roundRes(r).filter(Boolean).map(x => { const v = view(x.it), g = v.c(x.gBase);
+      return `<div class="row"><span class="n">${x.it.q}${x.timedOut ? ' <span class="label">· time ran out</span>' : ""}</span><span class="v">${plain(fmtV(g, v), v)}</span><span class="v">${plain(fmtA(v), v)}</span><span class="p" style="background:${ptsColor(x.p)}">+${x.p}</span></div>`; }).join("")).join("");
   el.end.innerHTML = `<div class="screen">
-    <p class="label">Final reading</p>
+    <p class="label">${PRACTICE ? "Practice · final reading" : `MeasureMe #${S.n} · final reading`}</p>
     <div class="final"><span class="final-num" style="font-variation-settings:'wdth' ${Math.round(62 + total / MAX * 63)}">${total.toLocaleString("en-US")}</span><span class="final-of">/ ${MAX.toLocaleString("en-US")}</span></div>
     <p class="rating">${title}</p>
     <p class="rating-sub">${sub}</p>
-    <p class="best">${isNewBest ? "<b>New personal best.</b>" : "Personal best: " + Math.max(total, prev).toLocaleString("en-US")}</p>
+    ${statsHtml}
     <div class="actions">
-      <button class="btn primary" type="button" id="again">Play again</button>
-      <button class="btn" type="button" id="share">${navigator.share && PHONE.matches ? "Share my results" : "Copy my results"}</button>
+      <button class="btn primary" type="button" id="share">${navigator.share && PHONE.matches ? "Share my results" : "Copy my results"}</button>
+      ${PRACTICE ? '<button class="btn" type="button" id="again">Play again</button>' : ""}
     </div>
     <textarea class="share-box" id="shareBox" readonly hidden aria-label="Results to share"></textarea>
     <h3 class="recap-h">Your ten readings</h3>
@@ -302,33 +416,57 @@ function showEnd() {
     </div>
   </div>`;
   show("end"); updateHeader();
-  window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
-  $("again").addEventListener("click", () => newGame());
+  if (!rerender) window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
   $("share").addEventListener("click", share);
-  $("again").focus({ preventScroll: true });
+  if (PRACTICE) $("again").addEventListener("click", newPractice);
+  if (!PRACTICE) { clearInterval(countdownId); countdown(); countdownId = setInterval(countdown, 1000); }
 }
 async function share() {
   const total = Math.round(S.score);
-  const lines = ROUNDS.map((R, r) => R.name.padEnd(12, " ") + roundRes(r).map(x => square(x.p)).join(""));
-  const text = `MeasureMe: ${total.toLocaleString("en-US")} / ${MAX.toLocaleString("en-US")} (${rating(total)[0]})\n${lines.join("\n")}`;
-  const url = /^https?:/.test(location.protocol) ? location.origin + location.pathname.replace(/index\.html$/, "") : "";
+  const lines = ROUNDS.map((R, r) => R.name.padEnd(12, " ") + roundRes(r).map(x => square(x ? x.p : 0)).join(""));
+  const head = PRACTICE ? "MeasureMe practice" : `MeasureMe #${S.n}`;
+  const text = `${head}: ${total.toLocaleString("en-US")} / ${MAX.toLocaleString("en-US")} (${rating(total)[0]})\n${lines.join("\n")}`;
+  // The page's own address (works at measureme.lol/ and at a /measureme/ subpath), minus ?practice.
+  const url = /^https?:/.test(location.protocol) ? location.href.split(/[?#]/)[0].replace(/index\.html$/, "") : "https://measureme.lol/";
   const btn = $("share");
   if (navigator.share && PHONE.matches) {
-    try { await navigator.share(url ? { text, url } : { text }); return; }
+    try { await navigator.share({ text, url }); return; }
     catch (e) { if (e && e.name === "AbortError") return; }
   }
-  const full = url ? `${text}\n${url}` : text;
+  const full = `${text}\n${url}`;
   try { await navigator.clipboard.writeText(full); btn.textContent = "Copied to clipboard"; }
   catch (e) { const box = $("shareBox"); box.value = full; box.hidden = false; box.focus(); box.select(); btn.textContent = "Copy the text below"; }
 }
 
-$("lock").addEventListener("click", lock);
+/* ---------- unit toggle ---------- */
+function setSys(sys) {
+  S.sys = sys; store.set("measureme.units", sys);
+  document.querySelectorAll("[data-sys]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sys === sys)));
+  if (S.phase === "guess") { const gB = S.view.inv(S.guess); S.view = view(S.picks[S.r][S.i]); paintChrome(); setGuess(S.view.c(gB)); }
+  else if (S.phase === "reveal") { animId++; S.view = view(S.picks[S.r][S.i]); paintChrome(); paint(S.view.a, true); renderReveal(); }
+  else if (S.phase === "end") showEnd(true);
+}
+document.querySelectorAll("[data-sys]").forEach(b => b.addEventListener("click", () => setSys(b.dataset.sys)));
+
+/* ---------- start ---------- */
+function newPractice() {
+  S.picks = ROUNDS.map(R => pickRound(R.items, R.count));
+  S.results = []; S.score = 0;
+  showStart(0);
+}
+$("lock").addEventListener("click", () => lock(false));
 $("next").addEventListener("click", next);
 document.addEventListener("keydown", e => {
-  if (e.key !== "Enter" || e.target.closest("button, textarea")) return;
-  if (S.phase === "guess") { lock(); e.preventDefault(); }
+  if (e.key !== "Enter" || e.target.closest("button, textarea, a")) return;
+  if (S.phase === "guess") { lock(false); e.preventDefault(); }
   else if (S.phase === "reveal") { next(); e.preventDefault(); }
 });
 
 buildProgress();
-newGame(true);
+document.querySelectorAll("[data-sys]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sys === S.sys)));
+if (PRACTICE) newPractice();
+else {
+  S.date = localDate(); S.n = dayNum(S.date); S.picks = dailyPicks(S.n);
+  const done = restore();
+  if (done >= TOTAL) showEnd(true); else showStart(done);
+}

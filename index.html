@@ -17,14 +17,14 @@
 <meta property="og:description" content="How tall was Queen Victoria? How deep is the Titanic? Slide to guess ten measurements, from everyday to deeply obscure.">
 <meta name="twitter:card" content="summary_large_image">
 <!-- Absolute URLs: update these if MeasureMe moves to a custom domain. -->
-<link rel="canonical" href="https://grottski.github.io/measureme/">
-<meta property="og:url" content="https://grottski.github.io/measureme/">
-<meta property="og:image" content="https://grottski.github.io/measureme/og.jpg">
+<link rel="canonical" href="https://measureme.lol/">
+<meta property="og:url" content="https://measureme.lol/">
+<meta property="og:image" content="https://measureme.lol/og.jpg">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="A white ruler with a slider marker on cobalt graph paper.">
-<meta name="twitter:image" content="https://grottski.github.io/measureme/og.jpg">
+<meta name="twitter:image" content="https://measureme.lol/og.jpg">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -164,6 +164,21 @@ button{font:inherit;color:inherit}
 .skin-cyl .head{display:none}
 .skin-cyl .base{left:calc(var(--cx) - 40px);bottom:26px;width:80px;height:12px;border-radius:3px;background:var(--case)}
 
+/* unit toggle, timer, daily stats */
+.seg{display:flex;border:1.5px solid var(--line);border-radius:6px;padding:2px;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:6px 10px;border-radius:4px;font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+.timer{display:flex;align-items:center;gap:10px}
+.timer-bar{flex:1;height:6px;border-radius:3px;background:var(--chip);border:1px solid var(--line);overflow:hidden}
+.timer-bar i{display:block;height:100%;width:100%;background:var(--accent);transition:width .1s linear}
+.timer-txt{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;min-width:2.8em;text-align:right}
+.timer.low .timer-bar i{background:var(--red)}
+.timer.low .timer-txt{color:var(--red)}
+.stats{display:flex;gap:14px 32px;flex-wrap:wrap}
+.stats div{display:flex;flex-direction:column;gap:2px}
+.stats b{font-family:var(--display);font-weight:800;font-variation-settings:"wdth" 110;font-size:26px;line-height:1.1;font-variant-numeric:tabular-nums}
+.best a{color:var(--accent)}
+
 /* screens */
 .screen{margin-top:26px;background:var(--surface);border:1.5px solid var(--ink);border-radius:4px;padding:clamp(22px,5vw,56px);display:flex;flex-direction:column;gap:18px}
 .round-big{margin:0;font-family:var(--display);font-weight:900;font-variation-settings:"wdth" 125;font-size:clamp(64px,12vw,136px);line-height:.86;letter-spacing:-.02em}
@@ -197,7 +212,9 @@ button{font:inherit;color:inherit}
   .wrap{padding-top:14px;padding-bottom:40px}
   .top{display:grid;grid-template-columns:1fr auto;gap:10px 12px;align-items:center}
   .meta{display:contents}
-  .brand{grid-column:1 / -1;grid-row:1}
+  .brand{grid-column:1;grid-row:1}
+  .seg{grid-column:2;grid-row:1}
+  .seg button{padding:5px 8px}
   .prog{grid-column:1;grid-row:2;gap:6px}
   .score{grid-column:2;grid-row:2;flex-direction:row;align-items:baseline;gap:8px}
   .word{font-size:26px}
@@ -252,6 +269,10 @@ button{font:inherit;color:inherit}
     <div class="meta">
       <div class="prog" id="prog" aria-label="Progress"></div>
       <div class="score"><span class="label">Score</span><b id="score">0</b></div>
+      <div class="seg" role="group" aria-label="Units">
+        <button type="button" data-sys="imp" aria-pressed="true">Imperial</button>
+        <button type="button" data-sys="met" aria-pressed="false">Metric</button>
+      </div>
     </div>
   </header>
 
@@ -259,7 +280,8 @@ button{font:inherit;color:inherit}
     <section class="game" id="game">
       <div class="panel">
         <div class="item">
-          <p class="eyebrow label"><span id="eyeRound">Round 1</span><span id="eyeItem">Item 1 of 2</span></p>
+          <div class="timer" id="timer" role="timer" aria-label="Time left"><div class="timer-bar"><i id="timerFill"></i></div><span class="timer-txt" id="timerTxt">0:30</span></div>
+          <p class="eyebrow label"><span id="eyeRound">Round 1</span><span id="eyeItem">Question 1 of 10</span></p>
           <h1 class="item-name" id="itemName">How tall was Queen Victoria?</h1>
           <p class="item-hint" id="itemHint"></p>
         </div>
@@ -311,6 +333,7 @@ button{font:inherit;color:inherit}
       </div>
     </section>
 
+    <section id="start" hidden></section>
     <section id="inter" hidden></section>
     <section id="end" hidden></section>
   </main>
