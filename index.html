@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#E8EDF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A1016" media="(prefers-color-scheme: dark)">
+<meta name="description" content="How tall was Queen Victoria? How deep is the Titanic? Slide to guess ten measurements, from everyday to deeply obscure.">
+<title>MeasureMe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#E8EDF1; --surface:#F8FAFB; --ink:#0D1821; --muted:#56687A; --line:#C5D0D9; --grid:rgba(13,24,33,.055);
+  --chip:#DCE3E9; --glass:#FFFFFF; --accent:#2446F5; --accent-ink:#FFFFFF;
+  --red:#E5484D; --liquid:#3D7BFF; --tape:#FFC23A; --tape-ink:#3A2A00; --steel:#8C9AA6; --case:#1E2B36;
+  --display:"Archivo","Arial Narrow",Arial,sans-serif;
+  --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --th:clamp(460px,74vh,620px); --cx:80px; --col:210px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0A1016; --surface:#111A22; --ink:#E6EDF3; --muted:#8B9CAC; --line:#24333F; --grid:rgba(230,237,243,.045);
+    --chip:#18242E; --glass:#16222C; --accent:#6C85FF; --accent-ink:#0A1016; --steel:#6E7E8B; --case:#2A3945;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0A1016; --surface:#111A22; --ink:#E6EDF3; --muted:#8B9CAC; --line:#24333F; --grid:rgba(230,237,243,.045);
+  --chip:#18242E; --glass:#16222C; --accent:#6C85FF; --accent-ink:#0A1016; --steel:#6E7E8B; --case:#2A3945;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:var(--body);font-size:16px;line-height:1.5;color:var(--ink);background-color:var(--ground);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:6px}
+.wrap{max-width:1060px;margin:0 auto;padding:22px clamp(16px,4vw,40px) 56px}
+.label{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px 24px;flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;gap:6px}
+.word{font-family:var(--display);font-weight:900;font-size:32px;line-height:.9;letter-spacing:-.01em;display:flex}
+.word .w1{font-variation-settings:"wdth" 125}
+.word .w2{font-variation-settings:"wdth" 62;color:var(--accent);margin-left:.08em}
+.ruler{height:9px;width:100%;border-top:1.5px solid var(--ink);
+  background:repeating-linear-gradient(90deg,var(--ink) 0 1.5px,transparent 1.5px 8px) top left/100% 5px no-repeat,
+             repeating-linear-gradient(90deg,var(--ink) 0 1.5px,transparent 1.5px 40px) top left/100% 9px no-repeat}
+.meta{display:flex;align-items:center;gap:18px}
+.prog{display:flex;gap:8px}
+.prog .grp{display:flex;gap:3px}
+.cell{width:12px;height:22px;border-radius:2px;background:var(--chip);border:1px solid var(--line);transition:background .4s}
+.cell.now{box-shadow:0 0 0 2px var(--ground),0 0 0 4px var(--accent)}
+.score{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+.score b{font-family:var(--mono);font-weight:600;font-size:20px;font-variant-numeric:tabular-nums}
+
+/* game */
+.game{display:grid;grid-template-columns:minmax(0,1fr) var(--col);gap:clamp(18px,3.5vw,44px);align-items:start;margin-top:26px}
+.panel{display:flex;flex-direction:column;gap:20px;min-width:0}
+.plate{display:grid;grid-template-columns:auto 1fr;gap:4px 18px;align-items:center;padding:14px 18px;border:1.5px solid var(--ink);border-radius:4px;background:var(--surface);position:relative}
+.plate::before,.plate::after{content:"";position:absolute;width:7px;height:7px;border-radius:50%;border:1.5px solid var(--muted);top:8px}
+.plate::before{left:8px}.plate::after{right:8px}
+.plate-unit{grid-row:1 / 3;font-family:var(--display);font-weight:800;font-variation-settings:"wdth" 110;font-size:44px;line-height:1;min-width:1.6em;color:var(--accent)}
+.plate-kind{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+.plate-range{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.item{display:flex;flex-direction:column;gap:8px}
+.eyebrow{margin:0;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.item-name{margin:0;font-family:var(--display);font-weight:800;font-variation-settings:"wdth" 88;font-size:clamp(28px,4.3vw,44px);line-height:1.06;letter-spacing:-.01em;text-wrap:balance}
+.item-hint{margin:0;color:var(--muted);font-size:17px;max-width:60ch}
+.readout{display:flex;flex-direction:column;gap:2px;min-width:0}
+.big-num{display:block;font-family:var(--display);font-weight:800;font-variation-settings:"wdth" 118;font-size:clamp(52px,8.4vw,88px);line-height:1;letter-spacing:-.02em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.big-num small{font-size:.42em;font-weight:600;font-variation-settings:"wdth" 100;color:var(--muted);margin-left:.18em;letter-spacing:0}
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);padding:12px 20px;border-radius:6px;font-weight:600;font-size:15px;cursor:pointer;touch-action:manipulation;transition:transform .08s,border-color .15s}
+.btn:hover{border-color:var(--ink)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.sq{width:48px;padding:12px 0;font-family:var(--mono);font-size:18px;line-height:1}
+.hint{margin:0;color:var(--muted);font-size:13px}
+.hint kbd{font-family:var(--mono);font-size:11px;padding:1px 5px;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+.hint .touch{display:none}
+.guess-pane,.reveal-pane{display:flex;flex-direction:column;gap:16px}
+.reveal-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.pts{display:flex;flex-direction:column;align-items:flex-end}
+.pts b{font-family:var(--display);font-weight:900;font-variation-settings:"wdth" 120;font-size:44px;line-height:1;color:var(--accent)}
+.pts small{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.verdict{margin:0;font-family:var(--display);font-weight:750;font-variation-settings:"wdth" 100;font-size:24px;line-height:1.15}
+.delta{margin:0;font-weight:600}
+.fact{margin:0;max-width:62ch;padding:14px 16px;border-radius:4px;background:var(--surface);border-left:3px solid var(--accent);font-size:15.5px}
+.fact::before{content:"Field note";display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------- gauge: one DOM, four skins ---------- */
+.gauge{position:relative;width:var(--col);height:var(--th);touch-action:none;cursor:ns-resize;user-select:none;-webkit-user-select:none}
+.gauge.locked{cursor:default}
+.rail{position:absolute;top:18px;bottom:70px;left:0;right:0}
+.glass,.base,.merc,.scale,.head{position:absolute}
+.tick{position:absolute;left:calc(var(--cx) + 26px);bottom:var(--p);transform:translateY(50%);display:flex;align-items:center;gap:5px;white-space:nowrap;pointer-events:none}
+.tick::before{content:"";width:9px;height:1.5px;background:var(--muted)}
+.tick.minor::before{width:5px;opacity:.6}
+.tick span{font-family:var(--mono);font-size:10.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+.handle,.ghost{position:absolute;left:0;width:calc(var(--cx) - 26px);display:flex;justify-content:flex-end;transform:translateY(50%);pointer-events:none}
+.handle{bottom:calc(var(--t) * 100%);z-index:3}
+.ghost{bottom:calc(var(--tg) * 100%);z-index:2}
+.pill{position:relative;font-family:var(--mono);font-size:11px;font-weight:600;padding:4px 6px;border-radius:4px;background:var(--ink);color:var(--ground);font-variant-numeric:tabular-nums}
+.pill::after{content:"";position:absolute;right:-6px;top:50%;transform:translateY(-50%);border:6px solid transparent;border-right:0;border-left-color:var(--ink)}
+.gauge.locked .handle .pill{background:var(--accent);color:var(--accent-ink)}
+.gauge.locked .handle .pill::after{border-left-color:var(--accent)}
+.ghost .pill{background:var(--surface);color:var(--ink);border:1.5px dashed var(--ink);padding:2px 5px}
+.ghost::before{content:"";position:absolute;right:-46px;width:42px;top:50%;border-top:2px dashed var(--ink)}
+
+/* thermometer */
+.skin-thermo .glass{left:calc(var(--cx) - 15px);width:30px;top:4px;bottom:28px;border-radius:15px;background:var(--glass);border:2px solid var(--line)}
+.skin-thermo .scale{display:none}
+.skin-thermo .merc{left:calc(var(--cx) - 7px);width:14px;bottom:-40px;height:calc(var(--t) * 100% + 40px);border-radius:7px;background:var(--red)}
+.skin-thermo .base{left:calc(var(--cx) - 29px);bottom:8px;width:58px;height:58px;border-radius:50%;background:var(--red);border:2px solid var(--line);box-shadow:inset 0 0 0 5px var(--glass)}
+.skin-thermo .head{display:none}
+
+/* height rod (stadiometer) */
+.skin-rod .glass{display:none}
+.skin-rod .scale{left:calc(var(--cx) - 6px);width:12px;top:-10px;bottom:-52px;border-radius:2px;background:linear-gradient(90deg,var(--steel),#C9D3DB 45%,var(--steel))}
+.skin-rod .merc{display:none}
+.skin-rod .head{left:calc(var(--cx) - 14px);width:70px;height:10px;bottom:calc(var(--t) * 100%);transform:translateY(50%);border-radius:2px;background:var(--ink);box-shadow:0 2px 0 rgba(0,0,0,.15)}
+.skin-rod .head::before{content:"";position:absolute;left:-2px;top:-7px;width:22px;height:24px;border-radius:3px;background:var(--ink)}
+.skin-rod .base{left:calc(var(--cx) - 42px);bottom:12px;width:84px;height:12px;border-radius:3px;background:var(--case)}
+
+/* tape measure */
+.skin-tape .glass{display:none}
+.skin-tape .scale{left:calc(var(--cx) - 1px);width:2px;top:0;bottom:0;background:repeating-linear-gradient(0deg,var(--line) 0 6px,transparent 6px 12px)}
+.skin-tape .merc{left:calc(var(--cx) - 12px);width:24px;bottom:-44px;height:calc(var(--t) * 100% + 44px);border-radius:1px;
+  background:repeating-linear-gradient(0deg,var(--tape-ink) 0 1px,transparent 1px 6px) left/7px 100% no-repeat,
+             repeating-linear-gradient(0deg,var(--tape-ink) 0 1.5px,transparent 1.5px 30px) left/13px 100% no-repeat,var(--tape)}
+.skin-tape .head{left:calc(var(--cx) - 14px);width:28px;height:7px;bottom:calc(var(--t) * 100%);border-radius:1px;background:var(--steel)}
+.skin-tape .base{left:calc(var(--cx) - 34px);bottom:4px;width:68px;height:62px;border-radius:12px;background:var(--case);box-shadow:inset 0 0 0 3px rgba(255,255,255,.08)}
+.skin-tape .base::after{content:"";position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%);border-radius:50%;border:3px solid var(--tape);opacity:.85}
+
+/* graduated cylinder */
+.skin-cyl .glass{left:calc(var(--cx) - 23px);width:46px;top:-8px;bottom:-26px;border-radius:0 0 8px 8px;background:var(--glass);border:2px solid var(--line);border-top:0}
+.skin-cyl .glass::before{content:"";position:absolute;left:-8px;right:-8px;top:0;height:2px;background:var(--line)}
+.skin-cyl .scale{display:none}
+.skin-cyl .merc{left:calc(var(--cx) - 19px);width:38px;bottom:-22px;height:calc(var(--t) * 100% + 22px);border-radius:0 0 6px 6px;background:linear-gradient(180deg,color-mix(in srgb,var(--liquid) 70%,white) 0 4px,var(--liquid) 4px)}
+.skin-cyl .head{display:none}
+.skin-cyl .base{left:calc(var(--cx) - 40px);bottom:26px;width:80px;height:12px;border-radius:3px;background:var(--case)}
+
+/* screens */
+.screen{margin-top:26px;background:var(--surface);border:1.5px solid var(--ink);border-radius:4px;padding:clamp(22px,5vw,56px);display:flex;flex-direction:column;gap:18px}
+.round-big{margin:0;font-family:var(--display);font-weight:900;font-variation-settings:"wdth" 125;font-size:clamp(64px,12vw,136px);line-height:.86;letter-spacing:-.02em}
+.round-name{margin:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-family:var(--display);font-weight:800;font-variation-settings:"wdth" 80;font-size:clamp(28px,4vw,40px);line-height:1.1}
+.chip{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:3px;background:var(--ink);color:var(--ground)}
+.blurb{margin:0;color:var(--muted);font-size:18px;max-width:52ch}
+.ladder{list-style:none;margin:6px 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ladder li{border:1.5px solid var(--line);border-radius:4px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.ladder li.next{border-color:var(--accent);border-width:2px}
+.ladder li.later{opacity:.55}
+.ladder span{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.final{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.final-num{font-family:var(--display);font-weight:900;font-size:clamp(76px,14vw,152px);line-height:.85;letter-spacing:-.02em}
+.final-of{font-family:var(--mono);font-size:16px;color:var(--muted)}
+.rating{margin:0;font-family:var(--display);font-weight:800;font-variation-settings:"wdth" 110;font-size:clamp(28px,4.4vw,42px);line-height:1.05}
+.rating-sub{margin:0;color:var(--muted);font-size:17px}
+.best{margin:0;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.best b{color:var(--accent)}
+.share-box{width:100%;min-height:120px;font-family:var(--mono);font-size:12px;padding:12px;border-radius:4px;border:1.5px solid var(--line);background:var(--ground);color:var(--ink)}
+.recap-h{margin:14px 0 0;font-family:var(--display);font-weight:800;font-size:22px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 7em 7em 4.5em;gap:6px 14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.row.head{border-bottom:1.5px solid var(--ink);padding-bottom:6px}
+.row.sub{display:block;border:0;padding:16px 0 2px}
+.row .n{font-weight:600}
+.row .v{font-family:var(--mono);font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+.row .p{justify-self:end;font-family:var(--mono);font-size:12px;font-weight:600;padding:3px 8px;border-radius:3px;color:#fff;font-variant-numeric:tabular-nums}
+
+/* phones: text full width, gauge beside readout + controls */
+@media (max-width:640px){
+  :root{--cx:60px;--col:120px;--th:clamp(340px,50vh,420px)}
+  .wrap{padding-top:14px;padding-bottom:40px}
+  .top{display:grid;grid-template-columns:1fr auto;gap:10px 12px;align-items:center}
+  .meta{display:contents}
+  .brand{grid-column:1 / -1;grid-row:1}
+  .prog{grid-column:1;grid-row:2;gap:6px}
+  .score{grid-column:2;grid-row:2;flex-direction:row;align-items:baseline;gap:8px}
+  .word{font-size:26px}
+  .cell{width:10px;height:16px}
+  .score b{font-size:17px}
+  .game{grid-template-columns:minmax(0,1fr) var(--col);column-gap:12px;row-gap:12px;margin-top:16px}
+  .panel,.guess-pane,.reveal-pane{display:contents}
+  .item{grid-column:1 / -1;grid-row:1;gap:6px;scroll-margin-top:10px}
+  .readout,.reveal-top{grid-column:1;grid-row:2;min-width:0}
+  .plate{grid-column:1;grid-row:3;padding:10px 14px;gap:2px 12px}
+  .plate-unit{font-size:34px}
+  .gauge{grid-column:2;grid-row:2 / 7}
+  .controls,.verdict{grid-column:1;grid-row:4}
+  .hint,.delta{grid-column:1;grid-row:5}
+  .reveal-pane .actions{grid-column:1;grid-row:6}
+  .fact{grid-column:1 / -1;grid-row:7}
+  .item-name{font-size:clamp(25px,7vw,32px)}
+  .item-hint{font-size:15.5px;line-height:1.4}
+  .big-num{font-size:clamp(46px,13vw,64px)}
+  .reveal-top{flex-direction:column;align-items:stretch;gap:4px}
+  .pts{align-items:flex-start}
+  .pts b{font-size:36px}
+  .verdict{font-size:20px}
+  .delta{font-size:15px}
+  .fact{font-size:15px;padding:12px 14px}
+  .controls{gap:8px}
+  .controls .btn.primary{flex:1;padding-left:10px;padding-right:10px}
+  .btn.sq{width:44px}
+  .hint .desk{display:none}
+  .hint .touch{display:inline}
+  .tick{left:calc(var(--cx) + 20px);gap:4px}
+  .tick::before{width:7px}
+  .tick span{font-size:10px}
+  .tick.minor{display:none}
+  .pill{font-size:10px;padding:3px 4px}
+  .ladder{grid-template-columns:1fr}
+  .row{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .row .n{grid-column:1 / -1}
+  .row .v{text-align:left}
+  .row.head .n{display:none}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="word" aria-label="MeasureMe"><span class="w1">MEASURE</span><span class="w2">ME</span></div>
+      <div class="ruler" aria-hidden="true"></div>
+    </div>
+    <div class="meta">
+      <div class="prog" id="prog" aria-label="Progress"></div>
+      <div class="score"><span class="label">Score</span><b id="score">0</b></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="game" id="game">
+      <div class="panel">
+        <div class="item">
+          <p class="eyebrow label"><span id="eyeRound">Round 1</span><span id="eyeItem">Item 1 of 2</span></p>
+          <h1 class="item-name" id="itemName">How tall was Queen Victoria?</h1>
+          <p class="item-hint" id="itemHint"></p>
+        </div>
+        <div class="plate" aria-live="polite">
+          <div class="plate-unit" id="plateUnit">cm</div>
+          <div class="plate-kind" id="plateKind">Height</div>
+          <div class="plate-range" id="plateRange"></div>
+        </div>
+
+        <div class="guess-pane" id="guessPane">
+          <div class="readout">
+            <span class="label">Your guess</span>
+            <output class="big-num" id="guessOut"></output>
+          </div>
+          <div class="controls">
+            <button class="btn sq" type="button" id="minus" aria-label="Lower">−</button>
+            <button class="btn sq" type="button" id="plus" aria-label="Higher">+</button>
+            <button class="btn primary" type="button" id="lock">Lock it in</button>
+          </div>
+          <p class="hint"><span class="desk">Drag the gauge, or use <kbd>↑</kbd> <kbd>↓</kbd> to nudge (<kbd>Shift</kbd> for ×10). <kbd>Enter</kbd> locks it in. </span><span class="touch">Slide the gauge, then fine-tune with − and + (hold to speed up). </span>The closer you are on the gauge, the more of the 100 points you get.</p>
+        </div>
+
+        <div class="reveal-pane" id="revealPane" hidden>
+          <div class="reveal-top">
+            <div class="readout">
+              <span class="label">Actual</span>
+              <div class="big-num" id="actualOut"></div>
+            </div>
+            <div class="pts"><b id="ptsOut">+0</b><small id="ptsMath"></small></div>
+          </div>
+          <p class="verdict" id="verdict"></p>
+          <p class="delta" id="delta"></p>
+          <p class="fact" id="fact"></p>
+          <div class="actions"><button class="btn primary" type="button" id="next">Next item</button></div>
+        </div>
+      </div>
+
+      <div class="gauge skin-rod" id="gauge" tabindex="0" role="slider" aria-label="Your guess" aria-orientation="vertical">
+        <div class="glass"></div>
+        <div class="rail" id="rail">
+          <div class="scale"></div>
+          <div class="merc"></div>
+          <div class="head"></div>
+          <div id="ticks"></div>
+          <div class="ghost" id="ghost" hidden><span class="pill">you</span></div>
+          <div class="handle"><span class="pill" id="handleTxt"></span></div>
+        </div>
+        <div class="base"></div>
+      </div>
+    </section>
+
+    <section id="inter" hidden></section>
+    <section id="end" hidden></section>
+  </main>
+</div>
+<script src="questions.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
