@@ -44,7 +44,7 @@ const answerDec = a => { const s = String(a); return s.includes(".") ? s.split("
 const fmtV = (v, it = cur()) => num(v, decimalsFor(stepAt(v, it)));
 const fmtA = (it = cur()) => num(it.a, answerDec(it.a));
 const withUnit = (s, it = cur()) => `${s}<small>${it.u}</small>`;
-const plain = (s, it = cur()) => `${s} ${it.u}`;
+const plain = (s, it = cur()) => `${s}${it.u.startsWith("°") ? "" : " "}${it.u}`;
 function compact(v) {
   const a = Math.abs(v); let s;
   if (a >= 1e6) s = +(a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
@@ -182,7 +182,7 @@ function showItem(first) {
   el.gauge.setAttribute("aria-valuemin", it.min);
   el.gauge.setAttribute("aria-valuemax", it.max);
   renderTicks(it);
-  setGuess(fromT(0.5));
+  setGuess(it.min); // gauges start at rest, so an untouched guess scores near zero
   updateHeader();
   if (!first) { window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" }); el.gauge.focus({ preventScroll: true }); }
 }
@@ -190,7 +190,7 @@ function showItem(first) {
 // Scored by distance along the gauge, so every unit and scale is judged the same way.
 function points(g, it) {
   const d = Math.abs(toT(g, it) - toT(it.a, it));
-  return Math.round(100 / (1 + Math.pow(d / 0.15, 2.2)));
+  return Math.round(100 / (1 + Math.pow(d / 0.1, 2.2)));
 }
 const pick = a => a[Math.floor(Math.random() * a.length)];
 function verdictFor(p, dir) {
