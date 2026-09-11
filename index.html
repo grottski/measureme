@@ -186,6 +186,18 @@ button{font:inherit;color:inherit}
 .ladder.steps b{font-family:var(--display);font-weight:800;font-size:22px;font-variation-settings:"wdth" 110}
 .ladder.steps li.done{opacity:.55}
 
+/* how far off: shown on each reveal */
+.miss{align-self:flex-start;margin:6px 0 0;display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:4px;border:1px solid var(--line);background:var(--chip);font-family:var(--mono);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.miss.hi::before{content:"▲";font-size:.75em}
+.miss.lo::before{content:"▼";font-size:.75em}
+.miss.ok{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+/* share card on the results screen */
+.share-wrap{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:28px;align-items:start}
+.card-img{display:block;width:100%;height:auto;aspect-ratio:1080 / 1350;border-radius:10px;background:#2446F5;box-shadow:0 12px 32px rgba(10,20,40,.28)}
+.share-side{display:flex;flex-direction:column;gap:14px;min-width:0}
+@media (max-width:760px){ .share-wrap{grid-template-columns:1fr} .card-img{max-width:420px} }
+
 /* screens */
 .screen{margin-top:26px;background:var(--surface);border:1.5px solid var(--ink);border-radius:4px;padding:clamp(22px,5vw,56px);display:flex;flex-direction:column;gap:18px}
 .round-big{margin:0;font-family:var(--display);font-weight:900;font-variation-settings:"wdth" 125;font-size:clamp(64px,12vw,136px);line-height:.86;letter-spacing:-.02em}
@@ -322,6 +334,7 @@ button{font:inherit;color:inherit}
             <div class="readout">
               <span class="label">Actual</span>
               <div class="big-num" id="actualOut"></div>
+              <p class="miss" id="missOut"></p>
             </div>
             <div class="pts"><b id="ptsOut">+0</b><small id="ptsMath"></small></div>
           </div>

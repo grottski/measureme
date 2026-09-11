@@ -374,6 +374,9 @@ function renderReveal() {
   $("delta").textContent = d < 1e-9 ? `You said ${plain(fmtV(g))}. Exactly right.`
     : `You said ${plain(fmtV(g))}: ${plain(num(d, Math.max(decimalsFor(stepAt(g)), aDec(it))))} too ${res.dir}.`;
   $("fact").textContent = res.it.x;
+  const mi = missInfo(res, it), mo = $("missOut");
+  mo.textContent = mi.text;
+  mo.className = "miss " + (mi.dir > 0 ? "hi" : mi.dir < 0 ? "lo" : mi.none ? "" : "ok");
 }
 let animId = 0;
 function animate(from, to) {
@@ -401,7 +404,117 @@ function rating(s) {
   if (s >= 250) return ["Eyeballer", "Somewhere between a guess and a vibe."];
   return ["Uncalibrated", "The gauge needs a word with you."];
 }
-const square = p => p >= 85 ? "🟦" : p >= 60 ? "🟩" : p >= 30 ? "🟨" : "⬜";
+// How far off a guess was. Sizes: a symmetric ratio (1.15× high, 1.25× low), so doubling and halving
+// read the same. Temperatures: the difference in degrees, since ratios mean nothing around zero.
+// `pos` places the guess on the share card's mini gauge (−1 = far low, 0 = answer, 1 = far high).
+function missInfo(x, v = view(x.it)) {
+  if (x.it.k === "temp") {
+    const d = v.c(x.gBase) - v.a, ad = Math.abs(d);
+    if (ad < (v.u === "°C" ? 0.3 : 0.5)) return { text: "Exact", short: "Exact", dir: 0, pos: 0 };
+    const s = `${d > 0 ? "+" : "−"}${num(ad, ad < 10 ? 1 : 0)}${v.u}`;
+    const scale = Math.max(Math.abs(x.it.a), 100) * (v.u === "°C" ? 5 / 9 : 1);
+    return { text: `${s} ${d > 0 ? "high" : "low"}`, short: s, dir: Math.sign(d), pos: clamp(d / scale / 0.8, -1, 1) };
+  }
+  if (!(x.gBase > 0)) return { text: "No guess", short: "—", dir: 0, none: true, pos: -1 };
+  const ratio = x.gBase / x.it.a, r = Math.max(ratio, 1 / ratio), dir = ratio > 1 ? 1 : -1;
+  if (r < 1.01) return { text: "Exact", short: "Exact", dir: 0, pos: 0 };
+  const rs = r < 10 ? String(+r.toFixed(r < 2 ? 2 : 1)) : num(r, 0);
+  return { text: `${rs}× ${dir > 0 ? "high" : "low"}`, short: `${rs}×`, dir, pos: clamp(dir * Math.log(r) / Math.log(4), -1, 1) };
+}
+
+/* ---------- share card: an image of the results, with no questions or answers (no spoilers) ---------- */
+let cardBlob = null, cardReady = Promise.resolve();
+const canShareFiles = () => { try { return !!(PHONE.matches && navigator.canShare && navigator.canShare({ files: [new File([new Blob(["x"])], "x.png", { type: "image/png" })] })); } catch (e) { return false; } };
+function shareText() {
+  const total = Math.round(S.score), head = PRACTICE ? "MeasureMe practice" : `MeasureMe #${S.n}`;
+  const misses = S.results.map((x, k) => { if (!x) return ""; const m = missInfo(x);
+    return `Q${k + 1} ${m.none ? "no guess" : m.dir > 0 ? m.short + "▲" : m.dir < 0 ? m.short + "▼" : "exact"}`; }).filter(Boolean).join(" · ");
+  // The page's own address (works at measureme.lol/ and at a /measureme/ subpath), minus ?practice.
+  const url = /^https?:/.test(location.protocol) ? location.href.split(/[?#]/)[0].replace(/index\.html$/, "") : "https://measureme.lol/";
+  const text = `${head}: ${total.toLocaleString("en-US")} / ${MAX.toLocaleString("en-US")} (${rating(total)[0]})\n${misses}`;
+  return { text, url, full: `${text}\n${url}` };
+}
+async function drawCard() {
+  const W = 1080, H = 1350, M = 84, cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  try { await Promise.all(['900 120px Archivo', '800 60px Archivo', '600 30px "IBM Plex Mono"', '600 34px "Instrument Sans"'].map(f => document.fonts.load(f))); } catch (e) {}
+  const DISPLAY = 'Archivo, "Arial Black", Arial, sans-serif', MONO = '"IBM Plex Mono", Menlo, monospace', BODY = '"Instrument Sans", Arial, sans-serif';
+  const WHITE = "#FFFFFF", DIM = "rgba(255,255,255,.72)", FAINT = "rgba(255,255,255,.16)", TAPE = "#FFC23A";
+  ctx.fillStyle = "#2446F5"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(255,255,255,.06)";
+  for (let x = 0; x <= W; x += 30) ctx.fillRect(x, 0, 1, H);
+  for (let y = 0; y <= H; y += 30) ctx.fillRect(0, y, W, 1);
+  // wordmark + ruler
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  ctx.font = `900 66px ${DISPLAY}`; ctx.fillStyle = WHITE; ctx.fillText("MEASURE", M, 150);
+  const w1 = ctx.measureText("MEASURE").width; ctx.fillStyle = TAPE; ctx.fillText("ME", M + w1 + 8, 150);
+  const rw = w1 + 8 + ctx.measureText("ME").width;
+  ctx.fillStyle = WHITE; ctx.fillRect(M, 170, rw, 3);
+  for (let x = 0; x <= rw; x += 12) ctx.fillRect(M + x, 170, 3, x % 60 === 0 ? 18 : 10);
+  // puzzle number + date
+  ctx.textAlign = "right"; ctx.font = `600 30px ${MONO}`; ctx.fillStyle = DIM;
+  ctx.fillText(PRACTICE ? "PRACTICE" : `#${S.n}`, W - M, 118);
+  ctx.fillText(new Date((S.date || localDate()) + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase(), W - M, 160);
+  // score + rating
+  const total = Math.round(S.score), totalS = total.toLocaleString("en-US");
+  ctx.textAlign = "left"; ctx.fillStyle = WHITE; ctx.font = `900 220px ${DISPLAY}`; ctx.fillText(totalS, M - 8, 430);
+  const sw = ctx.measureText(totalS).width;
+  ctx.font = `600 38px ${MONO}`; ctx.fillStyle = DIM; ctx.fillText(`/ ${MAX.toLocaleString("en-US")}`, M + sw + 8, 430);
+  ctx.font = `800 54px ${DISPLAY}`; ctx.fillStyle = WHITE; ctx.fillText(rating(total)[0], M, 512);
+  // one row per question: kind, mini gauge (answer at center, guess = yellow pointer), miss, points
+  const top = 590, rowH = 118, gx = 390, gw = 300;
+  S.results.forEach((x, k) => {
+    if (!x) return;
+    const y = top + k * rowH, mi = missInfo(x), gy = y + 70;
+    ctx.fillStyle = FAINT; ctx.fillRect(M, y, W - 2 * M, 2);
+    ctx.textAlign = "left"; ctx.fillStyle = DIM; ctx.font = `600 24px ${MONO}`; ctx.fillText(`Q${k + 1} · ×${MULT[k]}`, M, y + 44);
+    ctx.fillStyle = WHITE; ctx.font = `600 34px ${BODY}`; ctx.fillText(x.it.m, M, y + 88);
+    ctx.fillStyle = "rgba(255,255,255,.4)"; ctx.fillRect(gx, gy - 1, gw, 3);
+    [-1, -0.5, 0.5, 1].forEach(p => ctx.fillRect(gx + gw / 2 + p * gw / 2 - 1, gy - 9, 2, 18));
+    ctx.fillStyle = WHITE; ctx.fillRect(gx + gw / 2 - 2, gy - 22, 4, 44);
+    const mx = gx + gw / 2 + mi.pos * gw / 2;
+    ctx.fillStyle = TAPE; ctx.beginPath(); ctx.moveTo(mx, gy - 4); ctx.lineTo(mx - 15, gy - 30); ctx.lineTo(mx + 15, gy - 30); ctx.closePath(); ctx.fill();
+    ctx.textAlign = "right"; ctx.fillStyle = WHITE; ctx.font = `600 32px ${MONO}`; ctx.fillText(mi.none ? "—" : mi.short, W - M - 150, y + 62);
+    ctx.fillStyle = DIM; ctx.font = `600 20px ${MONO}`; ctx.fillText(mi.none ? "NO GUESS" : mi.dir > 0 ? "HIGH" : mi.dir < 0 ? "LOW" : "DEAD ON", W - M - 150, y + 92);
+    ctx.fillStyle = WHITE; ctx.font = `900 50px ${DISPLAY}`; ctx.fillText(`+${gainedOf(x, k)}`, W - M, y + 80);
+  });
+  // footer
+  const fy = top + 5 * rowH;
+  ctx.fillStyle = FAINT; ctx.fillRect(M, fy, W - 2 * M, 2);
+  ctx.textAlign = "left"; ctx.fillStyle = WHITE; ctx.font = `900 46px ${DISPLAY}`; ctx.fillText("measureme.lol", M, fy + 86);
+  ctx.textAlign = "right"; ctx.fillStyle = DIM; ctx.font = `600 24px ${MONO}`; ctx.fillText("ONE MEASUREMENT PUZZLE A DAY", W - M, fy + 80);
+  return cv;
+}
+function renderCard() {
+  cardReady = (async () => {
+    try { const cv = await drawCard(); $("cardImg").src = cv.toDataURL("image/png"); cardBlob = await new Promise(r => cv.toBlob(r, "image/png")); }
+    catch (e) { cardBlob = null; $("cardImg").hidden = true; }
+  })();
+}
+const cardName = () => `measureme-${PRACTICE ? "practice" : S.n}.png`;
+async function shareImage(btn) {
+  await cardReady;
+  if (!cardBlob) return copyText(btn);
+  try { await navigator.share({ files: [new File([cardBlob], cardName(), { type: "image/png" })], text: shareText().full }); }
+  catch (e) { if (!e || e.name !== "AbortError") copyText(btn); }
+}
+async function copyImage(btn) {
+  try { await navigator.clipboard.write([new ClipboardItem({ "image/png": cardReady.then(() => cardBlob) })]); btn.textContent = "Image copied"; }
+  catch (e) { saveImage(btn); }
+}
+async function saveImage(btn) {
+  await cardReady;
+  if (!cardBlob) return;
+  const a = document.createElement("a"); a.href = URL.createObjectURL(cardBlob); a.download = cardName();
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  if (btn.id === "saveImg") btn.textContent = "Saved";
+}
+async function copyText(btn) {
+  const { full } = shareText();
+  try { await navigator.clipboard.writeText(full); btn.textContent = "Text copied"; }
+  catch (e) { const box = $("shareBox"); box.value = full; box.hidden = false; box.focus(); box.select(); }
+}
 let countdownId = 0;
 function countdown() {
   const now = new Date(), mid = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -427,18 +540,24 @@ function showEnd(rerender) {
     </div>`;
   }
   const rows = S.results.map((x, k) => { if (!x) return ""; const v = view(x.it), g = v.c(x.gBase);
-    return `<div class="row"><span class="n"><span class="label">Q${k + 1} · ×${MULT[k]} · ${x.p}/100${x.timedOut ? " · time ran out" : ""}</span><br>${x.it.q}</span><span class="v said">${plain(fmtV(g, v), v)}</span><span class="v act">${plain(fmtA(v), v)}</span><span class="p" style="background:${ptsColor(x.p)}">+${gainedOf(x, k)}</span></div>`; }).join("");
+    return `<div class="row"><span class="n"><span class="label">Q${k + 1} · ×${MULT[k]} · ${missInfo(x, v).text} · ${x.p}/100${x.timedOut ? " · time ran out" : ""}</span><br>${x.it.q}</span><span class="v said">${plain(fmtV(g, v), v)}</span><span class="v act">${plain(fmtA(v), v)}</span><span class="p" style="background:${ptsColor(x.p)}">+${gainedOf(x, k)}</span></div>`; }).join("");
   el.end.innerHTML = `<div class="screen">
     <p class="label">${PRACTICE ? "Practice · final reading" : `MeasureMe #${S.n} · final reading`}</p>
-    <div class="final"><span class="final-num" style="font-variation-settings:'wdth' ${Math.round(62 + total / MAX * 63)}">${total.toLocaleString("en-US")}</span><span class="final-of">/ ${MAX.toLocaleString("en-US")}</span></div>
-    <p class="rating">${title}</p>
-    <p class="rating-sub">${sub}</p>
-    ${statsHtml}
-    <div class="actions">
-      <button class="btn primary" type="button" id="share">${navigator.share && PHONE.matches ? "Share my results" : "Copy my results"}</button>
-      ${PRACTICE ? '<button class="btn" type="button" id="again">Play again</button>' : ""}
+    <div class="share-wrap">
+      <img class="card-img" id="cardImg" alt="MeasureMe results card: ${total.toLocaleString("en-US")} out of ${MAX.toLocaleString("en-US")}, ${title}.">
+      <div class="share-side">
+        <p class="rating">${title}</p>
+        <p class="rating-sub">${sub}</p>
+        <div class="actions">
+          ${canShareFiles() ? '<button class="btn primary" type="button" id="shareImg">Share</button>'
+            : '<button class="btn primary" type="button" id="copyImg">Copy image</button><button class="btn" type="button" id="saveImg">Save image</button>'}
+          <button class="btn" type="button" id="copyText">Copy text</button>
+          ${PRACTICE ? '<button class="btn" type="button" id="again">Play again</button>' : ""}
+        </div>
+        <textarea class="share-box" id="shareBox" readonly hidden aria-label="Results to share"></textarea>
+        ${statsHtml}
+      </div>
     </div>
-    <textarea class="share-box" id="shareBox" readonly hidden aria-label="Results to share"></textarea>
     <h3 class="recap-h">Your five readings</h3>
     <div class="recap">
       <div class="row head label"><span class="n">Question</span><span class="v">You said</span><span class="v">Actual</span><span class="v">Points</span></div>
@@ -447,25 +566,11 @@ function showEnd(rerender) {
   </div>`;
   show("end"); updateHeader();
   if (!rerender) window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
-  $("share").addEventListener("click", share);
+  renderCard();
+  [["shareImg", shareImage], ["copyImg", copyImage], ["saveImg", saveImage], ["copyText", copyText]]
+    .forEach(([id, fn]) => { const b = $(id); if (b) b.addEventListener("click", () => fn(b)); });
   if (PRACTICE) $("again").addEventListener("click", newPractice);
   if (!PRACTICE) { clearInterval(countdownId); countdown(); countdownId = setInterval(countdown, 1000); }
-}
-async function share() {
-  const total = Math.round(S.score);
-  const lines = [S.results.map(x => square(x ? x.p : 0)).join("")];
-  const head = PRACTICE ? "MeasureMe practice" : `MeasureMe #${S.n}`;
-  const text = `${head}: ${total.toLocaleString("en-US")} / ${MAX.toLocaleString("en-US")} (${rating(total)[0]})\n${lines.join("\n")}`;
-  // The page's own address (works at measureme.lol/ and at a /measureme/ subpath), minus ?practice.
-  const url = /^https?:/.test(location.protocol) ? location.href.split(/[?#]/)[0].replace(/index\.html$/, "") : "https://measureme.lol/";
-  const btn = $("share");
-  if (navigator.share && PHONE.matches) {
-    try { await navigator.share({ text, url }); return; }
-    catch (e) { if (e && e.name === "AbortError") return; }
-  }
-  const full = `${text}\n${url}`;
-  try { await navigator.clipboard.writeText(full); btn.textContent = "Copied to clipboard"; }
-  catch (e) { const box = $("shareBox"); box.value = full; box.hidden = false; box.focus(); box.select(); btn.textContent = "Copy the text below"; }
 }
 
 /* ---------- unit toggle ---------- */
