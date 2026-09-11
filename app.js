@@ -28,10 +28,42 @@ const CONV = { // unit -> [other system's unit, factor, offset]
   mph: ["km/h", 1.609344, 0], "°F": ["°C", 5 / 9, -160 / 9], m: ["ft", 1 / 0.3048, 0], cm: ["in", 1 / 2.54, 0],
   km: ["mi", 1 / 1.609344, 0], kg: ["lb", 1 / 0.45359237, 0], g: ["oz", 1 / 28.349523125, 0], "km/h": ["mph", 1 / 1.609344, 0], "°C": ["°F", 9 / 5, 32]
 };
-function view(it) {
-  if (!SYS[it.u] || SYS[it.u] === S.sys) return Object.assign({}, it, { conv: false, c: v => v, inv: v => v });
-  const [u, f, b] = CONV[it.u], c = v => v * f + b;
-  return Object.assign({}, it, { u, min: c(it.min), max: c(it.max), a: c(it.a), conv: true, c, inv: v => (v - b) / f });
+// Gauge ranges are generated from the answer, seeded by the question text so everyone gets the
+// same gauge: 0 to ~1.6–4× the answer (a window around it for temperatures, ~2 decades either side
+// for log gauges). `ext` counts how many times the player stretched the gauge up or down.
+function hashStr(s) { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+const ABS0 = { "°F": -459.67, "°C": -273.15 };
+const niceCeil = (x, s) => Math.ceil(x / s - 1e-9) * s;
+const niceFloor = (x, s) => Math.floor(x / s + 1e-9) * s;
+function view(it, ext = { up: 0, down: 0 }) {
+  const conv = !!SYS[it.u] && SYS[it.u] !== S.sys;
+  const [u, f, b] = conv ? CONV[it.u] : [it.u, 1, 0];
+  const c = v => v * f + b, a = c(it.a), rand = rng(hashStr(it.q));
+  let min, max;
+  if (it.log) {
+    min = Math.pow(10, Math.floor(L10(a) - 1.2 - rand()) - ext.down);
+    max = Math.pow(10, Math.ceil(L10(a) + 1.2 + rand()) + ext.up);
+  } else if (it.k === "temp") {
+    const W = Math.max(Math.abs(a), c(100) - c(0)) * (1.6 + rand()), step = nice(W / 8), p = 0.3 + rand() * 0.35;
+    min = Math.max(niceFloor(a - W * p, step) - step * 8 * ext.down, ABS0[u]);
+    max = niceCeil(a + W * (1 - p), step) + step * 8 * ext.up;
+  } else {
+    const span = a * (1.6 + rand() * 2.4);
+    min = 0;
+    max = niceCeil(span, nice(span / 5)) * Math.pow(2, ext.up);
+  }
+  return Object.assign({}, it, { u, a, min, max, ext, conv, c, inv: v => (v - b) / f });
+}
+// Give the gauge more room: ×2 (×10 on log gauges) at the top; below only for temperatures and log gauges.
+function stretch(dir) {
+  if (S.phase !== "guess") return false;
+  const it = cur();
+  if (dir < 0 && (!(it.log || it.k === "temp") || it.min <= (ABS0[it.u] ?? -Infinity) + 1e-6)) return false;
+  const ext = { up: it.ext.up + (dir > 0 ? 1 : 0), down: it.ext.down + (dir < 0 ? 1 : 0) };
+  if (ext.up + ext.down > 8) return false;
+  S.view = view(S.picks[S.r][S.i], ext);
+  paintChrome(); setGuess(S.guess);
+  return true;
 }
 
 const S = { sys: store.get("measureme.units") || (/^en-(US|LR|MM)/i.test(navigator.language) ? "imp" : "met"),
@@ -128,6 +160,9 @@ window.addEventListener("resize", () => { fitNum(el.guessOut); fitNum(el.actualO
 function setGuess(v) { S.guess = snap(v); paint(S.guess); }
 function nudge(dir, big) {
   if (S.phase !== "guess") return;
+  // Nudging past either end stretches the gauge first.
+  if (dir > 0 && S.guess >= cur().max - 1e-9) stretch(1);
+  if (dir < 0 && S.guess <= cur().min + 1e-9) stretch(-1);
   const it = cur();
   if (it.log) { const f = big ? 1.25 : 1.02; setGuess(dir > 0 ? S.guess * f : S.guess / f); return; }
   const s = stepAt(S.guess) * (big ? 10 : 1);
@@ -135,18 +170,28 @@ function nudge(dir, big) {
 }
 
 /* ---------- input ---------- */
-let dragging = false;
-function fromPointer(y) {
-  const r = el.rail.getBoundingClientRect();
-  setGuess(fromT(clamp(1 - (y - r.top) / r.height, 0, 1)));
+// Dragging and holding past either end for a moment stretches the gauge.
+let dragging = false, lastY = 0, edgeSince = 0, edgeTimer = 0;
+const rawT = y => { const r = el.rail.getBoundingClientRect(); return 1 - (y - r.top) / r.height; };
+function fromPointer(y) { lastY = y; setGuess(fromT(clamp(rawT(y), 0, 1))); }
+function checkEdge() {
+  if (!dragging || S.phase !== "guess") return;
+  const t = rawT(lastY), dir = t > 1.01 ? 1 : t < -0.01 ? -1 : 0;
+  if (!dir) { edgeSince = 0; return; }
+  const now = Date.now();
+  if (!edgeSince) edgeSince = now;
+  else if (now - edgeSince > 450 && stretch(dir)) { edgeSince = now; fromPointer(lastY); }
 }
+function endDrag() { dragging = false; edgeSince = 0; clearInterval(edgeTimer); }
 el.gauge.addEventListener("pointerdown", e => {
-  if (S.phase !== "guess") return;
+  if (S.phase !== "guess" || e.target.closest(".stretch")) return;
   dragging = true; el.gauge.setPointerCapture(e.pointerId);
   fromPointer(e.clientY); el.gauge.focus({ preventScroll: true }); e.preventDefault();
+  clearInterval(edgeTimer); edgeTimer = setInterval(checkEdge, 150);
 });
 el.gauge.addEventListener("pointermove", e => { if (dragging) fromPointer(e.clientY); });
-["pointerup", "pointercancel"].forEach(ev => el.gauge.addEventListener(ev, () => { dragging = false; }));
+["pointerup", "pointercancel"].forEach(ev => el.gauge.addEventListener(ev, endDrag));
+$("stretchUp").addEventListener("click", () => { stretch(1); el.gauge.focus({ preventScroll: true }); });
 el.gauge.addEventListener("keydown", e => {
   const map = { ArrowUp: [1, e.shiftKey], ArrowRight: [1, e.shiftKey], ArrowDown: [-1, e.shiftKey], ArrowLeft: [-1, e.shiftKey], PageUp: [1, true], PageDown: [-1, true] };
   if (map[e.key]) { nudge(...map[e.key]); e.preventDefault(); }
@@ -283,10 +328,14 @@ function showItem() {
   startTimer();
 }
 
-// Scored by distance along the gauge, so every unit and scale is judged the same way.
+// Scored by how far off the guess is, never by the gauge (so stretching can't change points):
+// "times off" for sizes; percent off for temperatures, which can be zero or negative.
+// 10% off ≈ 94 · 25% ≈ 70 · 1.5× ≈ 38 · 2× ≈ 16 · 10× ≈ 1.
 function points(g, it) {
-  const d = Math.abs(toT(g, it) - toT(it.a, it));
-  return Math.round(100 / (1 + Math.pow(d / 0.1, 2.2)));
+  const gB = it.inv(g), aB = it.inv(it.a);
+  const miss = it.k === "temp" ? Math.abs(gB - aB) / Math.max(Math.abs(aB), 100) / 1.2
+                               : gB > 0 ? Math.abs(Math.log(gB / aB)) : Infinity;
+  return Math.round(100 / (1 + Math.pow(miss / 0.33, 2.2)));
 }
 const pick = a => a[Math.floor(Math.random() * a.length)];
 function verdictFor(p, dir) {
@@ -423,8 +472,8 @@ async function share() {
 function setSys(sys) {
   S.sys = sys; store.set("measureme.units", sys);
   document.querySelectorAll("[data-sys]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sys === sys)));
-  if (S.phase === "guess") { const gB = S.view.inv(S.guess); S.view = view(S.picks[S.r][S.i]); paintChrome(); setGuess(S.view.c(gB)); }
-  else if (S.phase === "reveal") { animId++; S.view = view(S.picks[S.r][S.i]); paintChrome(); paint(S.view.a, true); renderReveal(); }
+  if (S.phase === "guess") { const gB = S.view.inv(S.guess); S.view = view(S.picks[S.r][S.i], S.view.ext); paintChrome(); setGuess(S.view.c(gB)); }
+  else if (S.phase === "reveal") { animId++; S.view = view(S.picks[S.r][S.i], S.view.ext); paintChrome(); paint(S.view.a, true); renderReveal(); }
   else if (S.phase === "end") showEnd(true);
 }
 document.querySelectorAll("[data-sys]").forEach(b => b.addEventListener("click", () => setSys(b.dataset.sys)));

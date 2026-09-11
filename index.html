@@ -115,7 +115,10 @@ button{font:inherit;color:inherit}
 /* ---------- gauge: one DOM, four skins ---------- */
 .gauge{position:relative;width:var(--col);height:var(--th);touch-action:none;cursor:ns-resize;user-select:none;-webkit-user-select:none}
 .gauge.locked{cursor:default}
-.rail{position:absolute;top:18px;bottom:70px;left:0;right:0}
+.rail{position:absolute;top:36px;bottom:70px;left:0;right:0}
+.stretch{position:absolute;top:0;left:calc(var(--cx) - 30px);width:60px;z-index:4;font-family:var(--mono);font-size:10.5px;font-weight:600;padding:3px 0;border-radius:4px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;touch-action:manipulation}
+.stretch:hover{border-color:var(--accent);color:var(--accent)}
+.gauge.locked .stretch{visibility:hidden}
 .glass,.base,.merc,.scale,.head{position:absolute}
 .tick{position:absolute;left:calc(var(--cx) + 26px);bottom:var(--p);transform:translateY(50%);display:flex;align-items:center;gap:5px;white-space:nowrap;pointer-events:none}
 .tick::before{content:"";width:9px;height:1.5px;background:var(--muted)}
@@ -132,7 +135,7 @@ button{font:inherit;color:inherit}
 .ghost::before{content:"";position:absolute;right:-46px;width:42px;top:50%;border-top:2px dashed var(--ink)}
 
 /* thermometer */
-.skin-thermo .glass{left:calc(var(--cx) - 15px);width:30px;top:4px;bottom:28px;border-radius:15px;background:var(--glass);border:2px solid var(--line)}
+.skin-thermo .glass{left:calc(var(--cx) - 15px);width:30px;top:24px;bottom:28px;border-radius:15px;background:var(--glass);border:2px solid var(--line)}
 .skin-thermo .scale{display:none}
 .skin-thermo .merc{left:calc(var(--cx) - 7px);width:14px;bottom:-40px;height:calc(var(--t) * 100% + 40px);border-radius:7px;background:var(--red)}
 .skin-thermo .base{left:calc(var(--cx) - 29px);bottom:8px;width:58px;height:58px;border-radius:50%;background:var(--red);border:2px solid var(--line);box-shadow:inset 0 0 0 5px var(--glass)}
@@ -157,7 +160,7 @@ button{font:inherit;color:inherit}
 .skin-tape .base::after{content:"";position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%);border-radius:50%;border:3px solid var(--tape);opacity:.85}
 
 /* graduated cylinder */
-.skin-cyl .glass{left:calc(var(--cx) - 23px);width:46px;top:-8px;bottom:-26px;border-radius:0 0 8px 8px;background:var(--glass);border:2px solid var(--line);border-top:0}
+.skin-cyl .glass{left:calc(var(--cx) - 23px);width:46px;top:26px;bottom:-26px;border-radius:0 0 8px 8px;background:var(--glass);border:2px solid var(--line);border-top:0}
 .skin-cyl .glass::before{content:"";position:absolute;left:-8px;right:-8px;top:0;height:2px;background:var(--line)}
 .skin-cyl .scale{display:none}
 .skin-cyl .merc{left:calc(var(--cx) - 19px);width:38px;bottom:-22px;height:calc(var(--t) * 100% + 22px);border-radius:0 0 6px 6px;background:linear-gradient(180deg,color-mix(in srgb,var(--liquid) 70%,white) 0 4px,var(--liquid) 4px)}
@@ -311,7 +314,7 @@ button{font:inherit;color:inherit}
             <button class="btn sq" type="button" id="plus" aria-label="Higher">+</button>
             <button class="btn primary" type="button" id="lock">Lock it in</button>
           </div>
-          <p class="hint"><span class="desk">Drag the gauge, or use <kbd>↑</kbd> <kbd>↓</kbd> to nudge (<kbd>Shift</kbd> for ×10). <kbd>Enter</kbd> locks it in. </span><span class="touch">Slide the gauge, then fine-tune with − and + (hold to speed up). </span>The closer you are on the gauge, the more of the 100 points you get.</p>
+          <p class="hint"><span class="desk">Drag the gauge, or use <kbd>↑</kbd> <kbd>↓</kbd> to nudge (<kbd>Shift</kbd> for ×10). <kbd>Enter</kbd> locks it in. </span><span class="touch">Slide the gauge, then fine-tune with − and + (hold to speed up). </span>Need a bigger number? Tap <b>▲ More</b> or push past the top. Points depend on how far off you are, not on where the gauge ends.</p>
         </div>
 
         <div class="reveal-pane" id="revealPane" hidden>
@@ -330,6 +333,7 @@ button{font:inherit;color:inherit}
       </div>
 
       <div class="gauge skin-rod" id="gauge" tabindex="0" role="slider" aria-label="Your guess" aria-orientation="vertical">
+        <button class="stretch" id="stretchUp" type="button" aria-label="Give the gauge more room at the top">▲ More</button>
         <div class="glass"></div>
         <div class="rail" id="rail">
           <div class="scale"></div>
