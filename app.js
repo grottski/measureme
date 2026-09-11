@@ -18,14 +18,14 @@ const OFF = ROUNDS.map((R, r) => ROUNDS.slice(0, r).reduce((s, x) => s + x.count
 const TOTAL = ROUNDS.reduce((s, R) => s + R.count, 0);
 const TIME = 30;                      // seconds per question
 const LAUNCH = "2026-09-10";          // puzzle #1
-const PRACTICE = /[?&]practice\b/.test(location.search);
+let PRACTICE = false;                 // true while a practice game runs (set in profile.js)
 
 /* ---------- units: questions are written in one unit; the toggle converts for display ---------- */
 const SYS = { ft: "imp", yd: "imp", mi: "imp", in: "imp", lb: "imp", oz: "imp", mph: "imp", "°F": "imp",
               m: "met", cm: "met", km: "met", kg: "met", g: "met", "km/h": "met", "°C": "met" };
 const CONV = { // unit -> [other system's unit, factor, offset]
   ft: ["m", 0.3048, 0], yd: ["m", 0.9144, 0], mi: ["km", 1.609344, 0], in: ["cm", 2.54, 0], lb: ["kg", 0.45359237, 0],
-  mph: ["km/h", 1.609344, 0], "°F": ["°C", 5 / 9, -160 / 9], m: ["ft", 1 / 0.3048, 0], cm: ["in", 1 / 2.54, 0],
+  mph: ["km/h", 1.609344, 0], "°F": ["°C", 5 / 9, -160 / 9], oz: ["g", 28.349523125, 0], m: ["ft", 1 / 0.3048, 0], cm: ["in", 1 / 2.54, 0],
   km: ["mi", 1 / 1.609344, 0], kg: ["lb", 1 / 0.45359237, 0], g: ["oz", 1 / 28.349523125, 0], "km/h": ["mph", 1 / 1.609344, 0], "°C": ["°F", 9 / 5, 32]
 };
 // Gauge ranges are generated from the answer, seeded by the question text so everyone gets the
@@ -69,7 +69,7 @@ function stretch(dir) {
 const S = { sys: store.get("measureme.units") || (/^en-(US|LR|MM)/i.test(navigator.language) ? "imp" : "met"),
             r: 0, i: 0, picks: [], view: null, guess: 0, phase: "start", results: [], score: 0, n: 0, date: "" };
 const el = {};
-["gauge", "rail", "ticks", "ghost", "handleTxt", "guessOut", "actualOut", "guessPane", "revealPane", "game", "start", "inter", "end", "timer"].forEach(id => el[id] = $(id));
+["gauge", "rail", "ticks", "ghost", "handleTxt", "guessOut", "actualOut", "guessPane", "revealPane", "game", "start", "inter", "end", "timer", "home", "stats", "profile"].forEach(id => el[id] = $(id));
 const cur = () => S.view;
 const idx = () => OFF[S.r] + S.i;
 const gainedOf = (x, k) => Math.round(x.p * MULT[k]);
@@ -233,34 +233,47 @@ function pickRound(items, count) {
   pool.forEach(it => { if (out.length < count && !out.includes(it)) out.push(it); });
   return out;
 }
+// Daily progress lives on the active profile (profile.js), one record per date.
 function save() {
   if (PRACTICE) return;
-  store.setJSON("measureme.day5", { date: S.date, n: S.n,
-    res: S.results.filter(Boolean).map(x => ({ q: x.it.q, g: x.gBase, p: x.p, dir: x.dir, to: x.timedOut })) });
+  updateMe(p => {
+    const d = p.days[S.date] || (p.days[S.date] = { n: S.n, res: [] });
+    d.res = S.results.filter(Boolean).map(x => ({ q: x.it.q, g: x.gBase, p: x.p, dir: x.dir, to: x.timedOut }));
+    d.pending = S.pending || null;
+  });
 }
 function restore() {
-  const s = store.getJSON("measureme.day5");
-  if (!s || s.date !== S.date || !Array.isArray(s.res)) return 0;
+  const p = me(), d = p && p.days[S.date];
+  S.results = []; S.score = 0; S.resumeAt = 0; S.pending = null;
+  if (!d || !Array.isArray(d.res)) return 0;
   const flat = S.picks.flat();
-  s.res.forEach((x, k) => { if (flat[k] && flat[k].q === x.q) S.results[k] = { it: flat[k], gBase: x.g, p: x.p, dir: x.dir, timedOut: x.to }; });
+  d.res.forEach((x, k) => { if (flat[k] && flat[k].q === x.q) S.results[k] = { it: flat[k], gBase: x.g, p: x.p, dir: x.dir, timedOut: x.to }; });
+  let done = S.results.filter(Boolean).length;
+  // A question that was opened and then left keeps its clock; if it ran out meanwhile, it locks at rest.
+  const pend = d.pending;
+  if (pend && pend.k === done && flat[done]) {
+    if (Date.now() >= pend.deadline) {
+      const v = view(flat[done]);
+      S.results[done] = { it: flat[done], gBase: v.inv(v.min), p: points(v.min, v), dir: "low", timedOut: true };
+      done++; save();
+    } else S.resumeAt = pend.deadline;
+  }
   S.score = S.results.reduce((a, x, k) => a + (x ? gainedOf(x, k) : 0), 0);
-  return S.results.filter(Boolean).length;
+  return done;
 }
 function recordStats(total) {
-  const st = store.getJSON("measureme.stats") || { streak: 0, last: "", played: 0, best: 0 };
-  if (st.last !== S.date) {
-    const y = new Date(); y.setDate(y.getDate() - 1);
-    st.streak = st.last === localDate(y) ? st.streak + 1 : 1;
-    st.last = S.date; st.played += 1; st.best = Math.max(st.best || 0, total);
-    store.setJSON("measureme.stats", st);
-  }
-  return st;
+  updateMe(p => { const d = p.days[S.date]; if (d) { d.done = true; d.score = total; d.pending = null; } });
+  return statsFor(me());
 }
 
 /* ---------- timer ---------- */
 let timerId = 0, deadline = 0;
 function stopTimer() { clearInterval(timerId); timerId = 0; }
-function startTimer() { stopTimer(); deadline = Date.now() + TIME * 1000; tick(); timerId = setInterval(tick, 100); }
+function startTimer() {
+  stopTimer();
+  deadline = S.resumeAt > Date.now() ? S.resumeAt : Date.now() + TIME * 1000; // resuming keeps the old clock
+  S.resumeAt = 0; tick(); timerId = setInterval(tick, 100);
+}
 function tick() {
   const rem = Math.max(0, deadline - Date.now());
   $("timerFill").style.width = (rem / (TIME * 1000) * 100).toFixed(2) + "%";
@@ -282,7 +295,7 @@ function updateHeader() {
   });
   $("score").textContent = Math.round(S.score).toLocaleString("en-US");
 }
-function show(section) { ["game", "start", "inter", "end"].forEach(s => el[s].hidden = s !== section); }
+function show(section) { ["game", "start", "inter", "end", "home", "stats", "profile"].forEach(s => el[s].hidden = s !== section); }
 function goTo(k) {
   let r = 0; while (r < ROUNDS.length - 1 && k >= OFF[r + 1]) r++;
   S.r = r; S.i = k - OFF[r];
@@ -292,14 +305,15 @@ function showStart(done) {
   S.phase = "start";
   const when = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   el.start.innerHTML = `<div class="screen">
-    <p class="label">${PRACTICE ? "Practice · not saved" : "Daily puzzle · " + when}</p>
+    <p class="label">${PRACTICE ? (S.cat ? S.cat.label : "Random") + " practice · doesn’t affect your streak" : "Daily puzzle · " + when}</p>
     <h2 class="round-big">${PRACTICE ? "Practice" : "#" + S.n}</h2>
     <p class="blurb">Five measurements, each harder than the last. Slide the gauge to guess. Every answer is scored out of 100, then multiplied by its weight, for a total out of ${MAX.toLocaleString("en-US")}. You get <b>${TIME} seconds</b> per question${PRACTICE ? "." : ", and one try a day."}</p>
     <ol class="ladder steps">${MULT.map((m, k) => `<li class="${k < done ? "done" : ""}"><b>×${m}</b><span>Q${k + 1} · ${tierOf(k).name}</span></li>`).join("")}</ol>
-    <div class="actions"><button class="btn primary" type="button" id="begin">${done ? `Resume at question ${done + 1}` : "Start"}</button></div>
+    <div class="actions"><button class="btn primary" type="button" id="begin">${done ? `Resume at question ${done + 1}` : "Start"}</button><button class="btn" type="button" id="back">Menu</button></div>
   </div>`;
   show("start"); updateHeader();
   $("begin").addEventListener("click", () => goTo(done));
+  $("back").addEventListener("click", showHome);
 }
 function paintChrome() {
   const it = cur();
@@ -316,7 +330,7 @@ function showItem() {
   S.phase = "guess"; show("game");
   el.guessPane.hidden = false; el.revealPane.hidden = true; el.ghost.hidden = true;
   el.gauge.className = "gauge skin-" + SKIN[it.k];
-  $("eyeRound").textContent = `${R.name} · worth ×${MULT[idx()]}`;
+  $("eyeRound").textContent = `${PRACTICE && S.cat ? S.cat.label + " practice" : R.name} · worth ×${MULT[idx()]}`;
   $("eyeItem").textContent = `Question ${idx() + 1} of ${TOTAL}`;
   $("itemName").textContent = it.q;
   $("itemHint").textContent = it.h;
@@ -326,6 +340,7 @@ function showItem() {
   window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
   el.gauge.focus({ preventScroll: true });
   startTimer();
+  if (!PRACTICE) { S.pending = { k: idx(), deadline }; save(); }
 }
 
 // Scored by how far off the guess is, never by the gauge (so stretching can't change points):
@@ -353,6 +368,7 @@ function lock(timedOut) {
   S.results[idx()] = { it: S.picks[S.r][S.i], gBase: it.inv(g), p, dir, timedOut: !!timedOut,
                        v: (timedOut ? "Time’s up. " : "") + verdictFor(p, dir) };
   S.score += gainedOf(S.results[idx()], idx());
+  S.pending = null;
   save();
   S.phase = "reveal";
   el.gauge.classList.add("locked");
@@ -529,9 +545,10 @@ function showEnd(rerender) {
   const total = Math.round(S.score), [title, sub] = rating(total);
   let statsHtml;
   if (PRACTICE) {
-    statsHtml = `<p class="best">Practice games aren’t saved. <a href="./">Back to today’s puzzle</a></p>`;
+    if (!rerender) recordPractice(total);
+    statsHtml = `<p class="best">Practice games don’t affect your streak.</p>`;
   } else {
-    const st = rerender ? (store.getJSON("measureme.stats") || {}) : recordStats(total);
+    const st = rerender ? statsFor(me()) : recordStats(total);
     statsHtml = `<div class="stats">
       <div><span class="label">Next puzzle in</span><b class="countdown" id="countdown">--:--:--</b></div>
       <div><span class="label">Streak</span><b>${st.streak || 1} day${st.streak === 1 ? "" : "s"}</b></div>
@@ -553,6 +570,7 @@ function showEnd(rerender) {
             : '<button class="btn primary" type="button" id="copyImg">Copy image</button><button class="btn" type="button" id="saveImg">Save image</button>'}
           <button class="btn" type="button" id="copyText">Copy text</button>
           ${PRACTICE ? '<button class="btn" type="button" id="again">Play again</button>' : ""}
+          <button class="btn" type="button" id="toMenu">Menu</button>
         </div>
         <textarea class="share-box" id="shareBox" readonly hidden aria-label="Results to share"></textarea>
         ${statsHtml}
@@ -570,6 +588,7 @@ function showEnd(rerender) {
   [["shareImg", shareImage], ["copyImg", copyImage], ["saveImg", saveImage], ["copyText", copyText]]
     .forEach(([id, fn]) => { const b = $(id); if (b) b.addEventListener("click", () => fn(b)); });
   if (PRACTICE) $("again").addEventListener("click", newPractice);
+  $("toMenu").addEventListener("click", showHome);
   if (!PRACTICE) { clearInterval(countdownId); countdown(); countdownId = setInterval(countdown, 1000); }
 }
 
@@ -584,11 +603,7 @@ function setSys(sys) {
 document.querySelectorAll("[data-sys]").forEach(b => b.addEventListener("click", () => setSys(b.dataset.sys)));
 
 /* ---------- start ---------- */
-function newPractice() {
-  S.picks = ROUNDS.map(R => pickRound(R.items, R.count));
-  S.results = []; S.score = 0;
-  showStart(0);
-}
+function newPractice() { startPractice(S.cat); }
 $("lock").addEventListener("click", () => lock(false));
 $("next").addEventListener("click", next);
 document.addEventListener("keydown", e => {
@@ -599,9 +614,4 @@ document.addEventListener("keydown", e => {
 
 buildProgress();
 document.querySelectorAll("[data-sys]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sys === S.sys)));
-if (PRACTICE) newPractice();
-else {
-  S.date = localDate(); S.n = dayNum(S.date); S.picks = dailyPicks(S.n);
-  const done = restore();
-  if (done >= TOTAL) showEnd(true); else showStart(done);
-}
+boot(); // profile.js: profile setup on first visit, otherwise the home menu
