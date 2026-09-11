@@ -25,6 +25,7 @@ function createProfile(name, color) {
   const p = { id, name, color, created: new Date().toISOString(), days: {}, practice: { played: 0, best: 0, total: 0 } };
   if (!Object.keys(db.profiles).length) migrateLegacy(p); // the first profile inherits pre-profile progress
   db.profiles[id] = p; db.active = id; saveDB(db);
+  track("profile-created");
   return p;
 }
 function migrateLegacy(p) {

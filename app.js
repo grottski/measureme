@@ -312,7 +312,10 @@ function showStart(done) {
     <div class="actions"><button class="btn primary" type="button" id="begin">${done ? `Resume at question ${done + 1}` : "Start"}</button><button class="btn" type="button" id="back">Menu</button></div>
   </div>`;
   show("start"); updateHeader();
-  $("begin").addEventListener("click", () => goTo(done));
+  $("begin").addEventListener("click", () => {
+    track(PRACTICE ? `practice-start/${S.cat ? S.cat.id : "random"}` : done ? "daily-resume" : "daily-start");
+    goTo(done);
+  });
   $("back").addEventListener("click", showHome);
 }
 function paintChrome() {
@@ -364,6 +367,7 @@ function verdictFor(p, dir) {
 function lock(timedOut) {
   if (S.phase !== "guess") return;
   stopTimer();
+  if (timedOut) track("timeout");
   const it = cur(), g = S.guess, p = points(g, it), dir = g > it.a ? "high" : "low";
   S.results[idx()] = { it: S.picks[S.r][S.i], gBase: it.inv(g), p, dir, timedOut: !!timedOut,
                        v: (timedOut ? "Time’s up. " : "") + verdictFor(p, dir) };
@@ -545,10 +549,14 @@ function showEnd(rerender) {
   const total = Math.round(S.score), [title, sub] = rating(total);
   let statsHtml;
   if (PRACTICE) {
-    if (!rerender) recordPractice(total);
+    if (!rerender) { recordPractice(total); track("practice-finish"); }
     statsHtml = `<p class="best">Practice games don’t affect your streak.</p>`;
   } else {
     const st = rerender ? statsFor(me()) : recordStats(total);
+    if (!rerender) { // score band and streak length: a rough, anonymous view of how often people return
+      track(`daily-finish/${Math.min(4, Math.floor(total / 200)) * 200}`);
+      track(`streak/${Math.min(st.streak, 30)}`);
+    }
     statsHtml = `<div class="stats">
       <div><span class="label">Next puzzle in</span><b class="countdown" id="countdown">--:--:--</b></div>
       <div><span class="label">Streak</span><b>${st.streak || 1} day${st.streak === 1 ? "" : "s"}</b></div>
@@ -586,7 +594,7 @@ function showEnd(rerender) {
   if (!rerender) window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
   renderCard();
   [["shareImg", shareImage], ["copyImg", copyImage], ["saveImg", saveImage], ["copyText", copyText]]
-    .forEach(([id, fn]) => { const b = $(id); if (b) b.addEventListener("click", () => fn(b)); });
+    .forEach(([id, fn]) => { const b = $(id); if (b) b.addEventListener("click", () => { track(`share/${id}`); fn(b); }); });
   if (PRACTICE) $("again").addEventListener("click", newPractice);
   $("toMenu").addEventListener("click", showHome);
   if (!PRACTICE) { clearInterval(countdownId); countdown(); countdownId = setInterval(countdown, 1000); }
