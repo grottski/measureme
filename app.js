@@ -444,7 +444,6 @@ function missInfo(x, v = view(x.it)) {
 
 /* ---------- share card: an image of the results, with no questions or answers (no spoilers) ---------- */
 let cardBlob = null, cardReady = Promise.resolve();
-const canShareFiles = () => { try { return !!(PHONE.matches && navigator.canShare && navigator.canShare({ files: [new File([new Blob(["x"])], "x.png", { type: "image/png" })] })); } catch (e) { return false; } };
 function shareText() {
   const total = Math.round(S.score), head = PRACTICE ? "MeasureMe practice" : `MeasureMe #${S.n}`;
   const misses = S.results.map((x, k) => { if (!x) return ""; const m = missInfo(x);
@@ -513,15 +512,33 @@ function renderCard() {
   })();
 }
 const cardName = () => `measureme-${PRACTICE ? "practice" : S.n}.png`;
-async function shareImage(btn) {
-  await cardReady;
-  if (!cardBlob) return copyText(btn);
-  try { await navigator.share({ files: [new File([cardBlob], cardName(), { type: "image/png" })], text: shareText().full }); }
-  catch (e) { if (!e || e.name !== "AbortError") copyText(btn); }
+function shareHint(msg) { const h = $("shareHint"); if (h) { h.textContent = msg; h.hidden = false; } }
+// Share score: the phone's share sheet with the score text and link. Where there's no share sheet
+// (e.g. a page served without HTTPS), phones open Messages with the text filled in; desktops copy it.
+async function shareScore(btn) {
+  const { full } = shareText();
+  if (navigator.share) {
+    try { await navigator.share({ text: full }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  if (PHONE.matches) { location.href = "sms:?&body=" + encodeURIComponent(full); return; }
+  try { await navigator.clipboard.writeText(full); btn.textContent = "Score copied"; shareHint("Paste it anywhere."); }
+  catch (e) { const box = $("shareBox"); box.value = full; box.hidden = false; box.focus(); box.select(); }
 }
+// Copy image: puts the card on the clipboard so it can be pasted into a text. If the browser won't
+// allow that, phones get a press-and-hold hint instead of a download; desktops save the file.
 async function copyImage(btn) {
-  try { await navigator.clipboard.write([new ClipboardItem({ "image/png": cardReady.then(() => cardBlob) })]); btn.textContent = "Image copied"; }
-  catch (e) { saveImage(btn); }
+  if (window.isSecureContext && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": cardReady.then(() => cardBlob) })]);
+      btn.textContent = "Image copied"; shareHint("Now paste it into a message.");
+      return;
+    } catch (e) {}
+  }
+  if (PHONE.matches) {
+    shareHint("Press and hold the card above, then tap Copy.");
+    $("cardImg").scrollIntoView({ block: "center", behavior: RM ? "auto" : "smooth" });
+  } else saveImage(btn);
 }
 async function saveImage(btn) {
   await cardReady;
@@ -529,11 +546,6 @@ async function saveImage(btn) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(cardBlob); a.download = cardName();
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   if (btn.id === "saveImg") btn.textContent = "Saved";
-}
-async function copyText(btn) {
-  const { full } = shareText();
-  try { await navigator.clipboard.writeText(full); btn.textContent = "Text copied"; }
-  catch (e) { const box = $("shareBox"); box.value = full; box.hidden = false; box.focus(); box.select(); }
 }
 let countdownId = 0;
 function countdown() {
@@ -574,12 +586,13 @@ function showEnd(rerender) {
         <p class="rating">${title}</p>
         <p class="rating-sub">${sub}</p>
         <div class="actions">
-          ${canShareFiles() ? '<button class="btn primary" type="button" id="shareImg">Share</button>'
-            : '<button class="btn primary" type="button" id="copyImg">Copy image</button><button class="btn" type="button" id="saveImg">Save image</button>'}
-          <button class="btn" type="button" id="copyText">Copy text</button>
+          <button class="btn primary" type="button" id="shareScore">Share score</button>
+          <button class="btn" type="button" id="copyImg">Copy image</button>
+          ${PHONE.matches ? "" : '<button class="btn" type="button" id="saveImg">Save image</button>'}
           ${PRACTICE ? '<button class="btn" type="button" id="again">Play again</button>' : ""}
           <button class="btn" type="button" id="toMenu">Menu</button>
         </div>
+        <p class="best share-hint" id="shareHint" role="status" hidden></p>
         <textarea class="share-box" id="shareBox" readonly hidden aria-label="Results to share"></textarea>
         ${statsHtml}
       </div>
@@ -593,7 +606,7 @@ function showEnd(rerender) {
   show("end"); updateHeader();
   if (!rerender) window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
   renderCard();
-  [["shareImg", shareImage], ["copyImg", copyImage], ["saveImg", saveImage], ["copyText", copyText]]
+  [["shareScore", shareScore], ["copyImg", copyImage], ["saveImg", saveImage]]
     .forEach(([id, fn]) => { const b = $(id); if (b) b.addEventListener("click", () => { track(`share/${id}`); fn(b); }); });
   if (PRACTICE) $("again").addEventListener("click", newPractice);
   $("toMenu").addEventListener("click", showHome);
