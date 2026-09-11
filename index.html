@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#E8EDF1" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0A1016" media="(prefers-color-scheme: dark)">
-<meta name="description" content="How tall was Queen Victoria? How deep is the Titanic? Slide to guess ten measurements, from everyday to deeply obscure.">
+<meta name="description" content="How tall was Queen Victoria? How deep is the Titanic? Slide to guess five measurements, from everyday to deeply obscure.">
 <title>MeasureMe</title>
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
@@ -14,7 +14,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="MeasureMe">
 <meta property="og:title" content="MeasureMe">
-<meta property="og:description" content="How tall was Queen Victoria? How deep is the Titanic? Slide to guess ten measurements, from everyday to deeply obscure.">
+<meta property="og:description" content="How tall was Queen Victoria? How deep is the Titanic? Slide to guess five measurements, from everyday to deeply obscure.">
 <meta name="twitter:card" content="summary_large_image">
 <!-- Absolute URLs: update these if MeasureMe moves to a custom domain. -->
 <link rel="canonical" href="https://measureme.lol/">
@@ -178,6 +178,10 @@ button{font:inherit;color:inherit}
 .stats div{display:flex;flex-direction:column;gap:2px}
 .stats b{font-family:var(--display);font-weight:800;font-variation-settings:"wdth" 110;font-size:26px;line-height:1.1;font-variant-numeric:tabular-nums}
 .best a{color:var(--accent)}
+.ladder.steps{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.ladder.steps li{align-items:center;text-align:center;padding:10px 6px}
+.ladder.steps b{font-family:var(--display);font-weight:800;font-size:22px;font-variation-settings:"wdth" 110}
+.ladder.steps li.done{opacity:.55}
 
 /* screens */
 .screen{margin-top:26px;background:var(--surface);border:1.5px solid var(--ink);border-radius:4px;padding:clamp(22px,5vw,56px);display:flex;flex-direction:column;gap:18px}
@@ -251,10 +255,16 @@ button{font:inherit;color:inherit}
   .tick.minor{display:none}
   .pill{font-size:10px;padding:3px 4px}
   .ladder{grid-template-columns:1fr}
+  .ladder.steps{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+  .ladder.steps li{padding:8px 2px}
+  .ladder.steps b{font-size:18px}
+  .ladder.steps span{font-size:9.5px}
   .row{grid-template-columns:repeat(3,minmax(0,1fr))}
   .row .n{grid-column:1 / -1}
   .row .v{text-align:left}
-  .row.head .n{display:none}
+  .row.head{display:none}
+  .row .v.said::before{content:"You said ";color:var(--muted)}
+  .row .v.act::before{content:"Actual ";color:var(--muted)}
 }
 @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
 </style>
@@ -281,7 +291,7 @@ button{font:inherit;color:inherit}
       <div class="panel">
         <div class="item">
           <div class="timer" id="timer" role="timer" aria-label="Time left"><div class="timer-bar"><i id="timerFill"></i></div><span class="timer-txt" id="timerTxt">0:30</span></div>
-          <p class="eyebrow label"><span id="eyeRound">Round 1</span><span id="eyeItem">Question 1 of 10</span></p>
+          <p class="eyebrow label"><span id="eyeRound">Round 1</span><span id="eyeItem">Question 1 of 5</span></p>
           <h1 class="item-name" id="itemName">How tall was Queen Victoria?</h1>
           <p class="item-hint" id="itemHint"></p>
         </div>

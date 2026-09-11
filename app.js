@@ -1,4 +1,4 @@
-/* MeasureMe: one daily set of ten measurements. Questions live in questions.js (global ROUNDS). */
+/* MeasureMe: one daily set of five measurements. Questions live in questions.js (global ROUNDS). */
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const store = {
@@ -10,7 +10,10 @@ const store = {
 const RM = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const PHONE = window.matchMedia("(max-width:640px)");
 const SKIN = { temp: "thermo", height: "rod", length: "tape", other: "cyl" };
-const MAX = ROUNDS.reduce((s, R) => s + R.pts, 0);
+// Five questions a day, each harder than the last. Each is scored out of 100, then
+// multiplied by its weight; the weights sum to 10, so a perfect day is 1,000.
+const MULT = [1, 1.5, 2, 2.5, 3];
+const MAX = 100 * MULT.reduce((s, m) => s + m, 0);
 const OFF = ROUNDS.map((R, r) => ROUNDS.slice(0, r).reduce((s, x) => s + x.count, 0));
 const TOTAL = ROUNDS.reduce((s, R) => s + R.count, 0);
 const TIME = 30;                      // seconds per question
@@ -37,7 +40,8 @@ const el = {};
 ["gauge", "rail", "ticks", "ghost", "handleTxt", "guessOut", "actualOut", "guessPane", "revealPane", "game", "start", "inter", "end", "timer"].forEach(id => el[id] = $(id));
 const cur = () => S.view;
 const idx = () => OFF[S.r] + S.i;
-const roundRes = r => S.results.slice(OFF[r], OFF[r] + ROUNDS[r].count);
+const gainedOf = (x, k) => Math.round(x.p * MULT[k]);
+const tierOf = k => { let r = 0; while (r < ROUNDS.length - 1 && k >= OFF[r + 1]) r++; return ROUNDS[r]; };
 
 /* ---------- per-question scale ---------- */
 const L10 = Math.log10;
@@ -186,15 +190,15 @@ function pickRound(items, count) {
 }
 function save() {
   if (PRACTICE) return;
-  store.setJSON("measureme.daily", { date: S.date, n: S.n,
+  store.setJSON("measureme.day5", { date: S.date, n: S.n,
     res: S.results.filter(Boolean).map(x => ({ q: x.it.q, g: x.gBase, p: x.p, dir: x.dir, to: x.timedOut })) });
 }
 function restore() {
-  const s = store.getJSON("measureme.daily");
+  const s = store.getJSON("measureme.day5");
   if (!s || s.date !== S.date || !Array.isArray(s.res)) return 0;
   const flat = S.picks.flat();
   s.res.forEach((x, k) => { if (flat[k] && flat[k].q === x.q) S.results[k] = { it: flat[k], gBase: x.g, p: x.p, dir: x.dir, timedOut: x.to }; });
-  S.score = S.results.reduce((a, x) => a + (x ? x.p : 0), 0);
+  S.score = S.results.reduce((a, x, k) => a + (x ? gainedOf(x, k) : 0), 0);
   return S.results.filter(Boolean).length;
 }
 function recordStats(total) {
@@ -223,7 +227,7 @@ function tick() {
 /* ---------- flow ---------- */
 const ptsColor = p => `color-mix(in srgb, var(--accent) ${Math.round(15 + p * 0.85)}%, #8A98A5)`;
 function buildProgress() {
-  $("prog").innerHTML = ROUNDS.map((R, r) => `<div class="grp">${Array.from({ length: R.count }, (_, i) => `<span class="cell" data-k="${OFF[r] + i}"></span>`).join("")}</div>`).join("");
+  $("prog").innerHTML = `<div class="grp">${MULT.map((m, k) => `<span class="cell" data-k="${k}" title="Question ${k + 1} · ×${m}"></span>`).join("")}</div>`;
 }
 function updateHeader() {
   document.querySelectorAll(".cell").forEach(c => {
@@ -245,8 +249,8 @@ function showStart(done) {
   el.start.innerHTML = `<div class="screen">
     <p class="label">${PRACTICE ? "Practice · not saved" : "Daily puzzle · " + when}</p>
     <h2 class="round-big">${PRACTICE ? "Practice" : "#" + S.n}</h2>
-    <p class="blurb">Ten measurements, from everyday to deeply obscure. Slide the gauge to guess. You get <b>${TIME} seconds</b> per question${PRACTICE ? "." : ", and one try a day."}</p>
-    <ol class="ladder">${ROUNDS.map((R, r) => `<li class="${done >= OFF[r] + R.count ? "done" : ""}"><b>${R.name}</b><span>${R.count} questions · ${R.pts} pts</span></li>`).join("")}</ol>
+    <p class="blurb">Five measurements, each harder than the last. Slide the gauge to guess. Every answer is scored out of 100, then multiplied by its weight, for a total out of ${MAX.toLocaleString("en-US")}. You get <b>${TIME} seconds</b> per question${PRACTICE ? "." : ", and one try a day."}</p>
+    <ol class="ladder steps">${MULT.map((m, k) => `<li class="${k < done ? "done" : ""}"><b>×${m}</b><span>Q${k + 1} · ${tierOf(k).name}</span></li>`).join("")}</ol>
     <div class="actions"><button class="btn primary" type="button" id="begin">${done ? `Resume at question ${done + 1}` : "Start"}</button></div>
   </div>`;
   show("start"); updateHeader();
@@ -267,7 +271,7 @@ function showItem() {
   S.phase = "guess"; show("game");
   el.guessPane.hidden = false; el.revealPane.hidden = true; el.ghost.hidden = true;
   el.gauge.className = "gauge skin-" + SKIN[it.k];
-  $("eyeRound").textContent = `Round ${S.r + 1} · ${R.name} · ${R.pts} pts`;
+  $("eyeRound").textContent = `${R.name} · worth ×${MULT[idx()]}`;
   $("eyeItem").textContent = `Question ${idx() + 1} of ${TOTAL}`;
   $("itemName").textContent = it.q;
   $("itemHint").textContent = it.h;
@@ -299,7 +303,7 @@ function lock(timedOut) {
   const it = cur(), g = S.guess, p = points(g, it), dir = g > it.a ? "high" : "low";
   S.results[idx()] = { it: S.picks[S.r][S.i], gBase: it.inv(g), p, dir, timedOut: !!timedOut,
                        v: (timedOut ? "Time’s up. " : "") + verdictFor(p, dir) };
-  S.score += p;
+  S.score += gainedOf(S.results[idx()], idx());
   save();
   S.phase = "reveal";
   el.gauge.classList.add("locked");
@@ -307,8 +311,7 @@ function lock(timedOut) {
   el.ghost.hidden = false;
   el.guessPane.hidden = true; el.revealPane.hidden = false;
   renderReveal();
-  const R = ROUNDS[S.r];
-  $("next").textContent = S.i < R.count - 1 ? "Next question" : S.r < ROUNDS.length - 1 ? `On to Round ${S.r + 2}` : "See my final score";
+  $("next").textContent = idx() < TOTAL - 1 ? `Next question (×${MULT[idx() + 1]})` : "See my final score";
   $("next").focus({ preventScroll: true });
   updateHeader();
   animate(g, it.a);
@@ -316,8 +319,8 @@ function lock(timedOut) {
 }
 function renderReveal() {
   const res = S.results[idx()], it = cur(), g = it.c(res.gBase), d = Math.abs(g - it.a);
-  $("ptsOut").textContent = "+" + res.p;
-  $("ptsMath").textContent = "out of 100";
+  $("ptsOut").textContent = "+" + gainedOf(res, idx());
+  $("ptsMath").textContent = `${res.p} / 100 × ${MULT[idx()]}`;
   $("verdict").textContent = res.v || verdictFor(res.p, res.dir);
   $("delta").textContent = d < 1e-9 ? `You said ${plain(fmtV(g))}. Exactly right.`
     : `You said ${plain(fmtV(g))}: ${plain(num(d, Math.max(decimalsFor(stepAt(g)), aDec(it))))} too ${res.dir}.`;
@@ -339,29 +342,8 @@ function animate(from, to) {
 function next() {
   if (S.phase !== "reveal") return;
   animId++;
-  if (S.i < ROUNDS[S.r].count - 1) { S.i++; showItem(); }
-  else if (S.r < ROUNDS.length - 1) showInter();
-  else showEnd();
+  if (idx() < TOTAL - 1) goTo(idx() + 1); else showEnd();
 }
-const roundScore = r => roundRes(r).reduce((s, x) => s + (x ? x.p : 0), 0);
-
-function showInter() {
-  S.phase = "inter";
-  const nr = S.r + 1, R = ROUNDS[nr];
-  el.inter.innerHTML = `<div class="screen">
-    <p class="label">Round ${S.r + 1} done · ${roundScore(S.r)} points banked</p>
-    <h2 class="round-big">Round ${nr + 1}</h2>
-    <p class="round-name">${R.name} <span class="chip">${R.count} questions · ${R.pts} pts</span></p>
-    <p class="blurb">${R.blurb} The clock starts when you tap Start.</p>
-    <ol class="ladder">${ROUNDS.map((x, k) => `<li class="${k < nr ? "done" : k === nr ? "next" : "later"}"><b>${x.name}</b><span>${k < nr ? roundScore(k) + " of " + x.pts + " pts" : k === nr ? "Up next · " + x.pts + " pts" : x.pts + " pts"}</span></li>`).join("")}</ol>
-    <div class="actions"><button class="btn primary" type="button" id="go">Start Round ${nr + 1}</button></div>
-  </div>`;
-  show("inter"); updateHeader();
-  window.scrollTo({ top: 0, behavior: RM ? "auto" : "smooth" });
-  $("go").addEventListener("click", () => { S.r = nr; S.i = 0; showItem(); });
-  $("go").focus({ preventScroll: true });
-}
-
 function rating(s) {
   if (s >= 900) return ["Master Calibrator", "Your eyes are basically laser rangefinders."];
   if (s >= 750) return ["Precision Instrument", "A few readings off, most dead on."];
@@ -395,9 +377,8 @@ function showEnd(rerender) {
       <div><span class="label">Best</span><b>${(st.best || total).toLocaleString("en-US")}</b></div>
     </div>`;
   }
-  const rows = ROUNDS.map((R, r) => `<div class="row sub label">Round ${r + 1} · ${R.name} · ${roundScore(r)} of ${R.pts} pts</div>` +
-    roundRes(r).filter(Boolean).map(x => { const v = view(x.it), g = v.c(x.gBase);
-      return `<div class="row"><span class="n">${x.it.q}${x.timedOut ? ' <span class="label">· time ran out</span>' : ""}</span><span class="v">${plain(fmtV(g, v), v)}</span><span class="v">${plain(fmtA(v), v)}</span><span class="p" style="background:${ptsColor(x.p)}">+${x.p}</span></div>`; }).join("")).join("");
+  const rows = S.results.map((x, k) => { if (!x) return ""; const v = view(x.it), g = v.c(x.gBase);
+    return `<div class="row"><span class="n"><span class="label">Q${k + 1} · ×${MULT[k]} · ${x.p}/100${x.timedOut ? " · time ran out" : ""}</span><br>${x.it.q}</span><span class="v said">${plain(fmtV(g, v), v)}</span><span class="v act">${plain(fmtA(v), v)}</span><span class="p" style="background:${ptsColor(x.p)}">+${gainedOf(x, k)}</span></div>`; }).join("");
   el.end.innerHTML = `<div class="screen">
     <p class="label">${PRACTICE ? "Practice · final reading" : `MeasureMe #${S.n} · final reading`}</p>
     <div class="final"><span class="final-num" style="font-variation-settings:'wdth' ${Math.round(62 + total / MAX * 63)}">${total.toLocaleString("en-US")}</span><span class="final-of">/ ${MAX.toLocaleString("en-US")}</span></div>
@@ -409,7 +390,7 @@ function showEnd(rerender) {
       ${PRACTICE ? '<button class="btn" type="button" id="again">Play again</button>' : ""}
     </div>
     <textarea class="share-box" id="shareBox" readonly hidden aria-label="Results to share"></textarea>
-    <h3 class="recap-h">Your ten readings</h3>
+    <h3 class="recap-h">Your five readings</h3>
     <div class="recap">
       <div class="row head label"><span class="n">Question</span><span class="v">You said</span><span class="v">Actual</span><span class="v">Points</span></div>
       ${rows}
@@ -423,7 +404,7 @@ function showEnd(rerender) {
 }
 async function share() {
   const total = Math.round(S.score);
-  const lines = ROUNDS.map((R, r) => R.name.padEnd(12, " ") + roundRes(r).map(x => square(x ? x.p : 0)).join(""));
+  const lines = [S.results.map(x => square(x ? x.p : 0)).join("")];
   const head = PRACTICE ? "MeasureMe practice" : `MeasureMe #${S.n}`;
   const text = `${head}: ${total.toLocaleString("en-US")} / ${MAX.toLocaleString("en-US")} (${rating(total)[0]})\n${lines.join("\n")}`;
   // The page's own address (works at measureme.lol/ and at a /measureme/ subpath), minus ?practice.

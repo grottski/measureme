@@ -2,7 +2,7 @@
    q: question · h: hint · u: unit · m: what's measured · k: gauge skin (height | length | temp | other)
    min/max: slider range in u (log: true for ranges spanning orders of magnitude) · a: answer · x: field note */
 const ROUNDS = [
-  { name: "Calibration", count: 2, pts: 200, blurb: "Things you’ve seen, held or heard of. Warm up the eye.", items: [
+  { name: "Calibration", count: 2, blurb: "Things you’ve seen, held or heard of. Warm up the eye.", items: [
     { q: "How tall was Queen Victoria?", h: "Britain’s monarch from 1837 to 1901.", u: "cm", m: "Height", k: "height", min: 130, max: 200, a: 152, x: "About 152 cm, just under 5 ft. Her gowns, preserved in museums, show how petite she was." },
     { q: "How tall is the Statue of Liberty, from her heel to the tip of the torch?", h: "The copper statue only, not the pedestal.", u: "ft", m: "Height", k: "height", min: 0, max: 250, a: 151, x: "151 ft 1 in from heel to torch. With the pedestal and foundation, it’s 305 ft from the ground." },
     { q: "How long is an NFL field, end zones included?", h: "Back line to back line.", u: "yd", m: "Length", k: "length", min: 60, max: 160, a: 120, x: "100 yards of field plus two 10-yard end zones: 120 yards, or 360 ft." },
@@ -19,7 +19,7 @@ const ROUNDS = [
     { q: "How long is an NBA game, not counting stoppages?", h: "Regulation time, all four quarters.", u: "min", m: "Time", k: "other", min: 20, max: 90, a: 48, x: "Four 12-minute quarters make 48 minutes, though a real game runs over two hours." },
     { q: "How cold should a home freezer be?", h: "The FDA-recommended setting.", u: "°F", m: "Temperature", k: "temp", min: -30, max: 70, a: 0, x: "0°F (−18°C). At that temperature, bacteria stop growing." }
   ]},
-  { name: "Field Work", count: 3, pts: 300, blurb: "Landmarks, animals and records you know exist but have never measured.", items: [
+  { name: "Field Work", count: 2, blurb: "Landmarks, animals and records you know exist but have never measured.", items: [
     { q: "How long is the main span of the Golden Gate Bridge?", h: "Tower to tower.", u: "ft", m: "Length", k: "length", min: 1000, max: 8000, a: 4200, x: "4,200 ft (1,280 m). It was the world’s longest suspension span when it opened in 1937." },
     { q: "How deep is the deepest point in the ocean?", h: "Challenger Deep, in the Mariana Trench.", u: "m", m: "Depth", k: "length", min: 2000, max: 15000, a: 10935, x: "About 10,935 m (35,876 ft). Drop Everest in and its peak would still be over 2 km underwater." },
     { q: "How tall was Abraham Lincoln?", h: "America’s tallest president.", u: "cm", m: "Height", k: "height", min: 150, max: 220, a: 193, x: "6 ft 4 in (193 cm). With his stovepipe hat, he topped 7 ft." },
@@ -40,7 +40,7 @@ const ROUNDS = [
     { q: "How long did the shortest war in history last?", h: "Britain vs. Zanzibar, 1896.", u: "min", m: "Time", k: "other", min: 1, max: 10000, log: true, a: 38, x: "About 38 minutes. The Sultan’s palace was shelled until he fled, and Zanzibar surrendered before lunch." },
     { q: "How far away is the Moon?", h: "Its average distance from Earth.", u: "mi", m: "Distance", k: "length", min: 1000, max: 10000000, log: true, a: 238855, x: "About 238,855 miles (384,400 km). Every other planet in the solar system would fit in that gap." }
   ]},
-  { name: "Deep Cuts", count: 5, pts: 500, blurb: "Obscure records, strange biology and numbers nobody should know.", items: [
+  { name: "Deep Cuts", count: 1, blurb: "Obscure records, strange biology and numbers nobody should know.", items: [
     { q: "How tall was Robert Wadlow, the tallest man ever?", h: "Measured in 1940, shortly before his death.", u: "cm", m: "Height", k: "height", min: 160, max: 320, a: 272, x: "272 cm (8 ft 11.1 in). He was still growing when he died at 22." },
     { q: "How fast does a peregrine falcon dive?", h: "The fastest dive ever recorded.", u: "mph", m: "Speed", k: "other", min: 20, max: 400, a: 242, x: "About 242 mph (389 km/h), making it the fastest animal on Earth." },
     { q: "How long can a giant squid grow?", h: "The longest reliably measured, tentacles included.", u: "m", m: "Length", k: "length", min: 1, max: 30, a: 13, x: "Around 12–13 m (about 43 ft). Its eyes are the size of dinner plates." },
